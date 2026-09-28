@@ -1,6 +1,6 @@
 def apply_mto_policy(model, vars_dict, data):
     """
-    Política MTO Realista (Make-to-Forecast):
+    Política MTO Realista (Make-to-Order):
     Sin postergación (WIP = 0, y sin usar wb ni wl). 
     La producción acoplada (w_bl) responde a la demanda estimada (Valor Esperado).
     """
