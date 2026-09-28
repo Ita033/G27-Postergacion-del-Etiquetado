@@ -5,8 +5,8 @@ from src.core_model import build_base_model
 from src.policies import apply_mto_policy_varas, apply_mts_policy
 from src.kpi_calculator import extract_results
 from combinaciones_32 import analizar_combinaciones
-from src.horizonte_rodante import recorrer_camino, evaluar_todos_los_caminos
- 
+from src.horizonte_rodante import recorrer_camino, mostrar_camino, comparar_con_modelo_completo
+
 def main():
     # 1. Cargar Datos
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,9 +18,9 @@ def main():
     except Exception as e:
         print(f"Error crítico al cargar datos: {e}")
         return
- 
+
     resultados_comparativos = []
- 
+
     # =========================================================================
     # ESCENARIO 1: POSTERGACIÓN PURA (MODELO BASE)
     # =========================================================================
@@ -31,7 +31,7 @@ def main():
     model_post.optimize()
     res_post = extract_results(model_post, vars_post, data, "Postergación")
     if res_post: resultados_comparativos.append(res_post)
- 
+
     # =========================================================================
     # ESCENARIO 2: PRODUCIR CONTRA PEDIDO (MTO)
     # =========================================================================
@@ -43,7 +43,7 @@ def main():
     model_mto.optimize()
     res_mto = extract_results(model_mto, vars_mto, data, "Contra Pedido (MTO)")
     if res_mto: resultados_comparativos.append(res_mto)
- 
+
     # =========================================================================
     # ESCENARIO 3: PRODUCIR A STOCK (MTS)
     # =========================================================================
@@ -55,7 +55,7 @@ def main():
     model_mts.optimize()
     res_mts = extract_results(model_mts, vars_mts, data, "Contra Stock (MTS)")
     if res_mts: resultados_comparativos.append(res_mts)
- 
+
     # =========================================================================
     # TABLA RESUMEN DE COMPARACIÓN
     # =========================================================================
@@ -72,7 +72,7 @@ def main():
         # Opcional: Guardar el resultado a un CSV para usarlo en el informe LaTeX
         df_res.to_csv("resultados_comparativos.csv", index=False)
         print("\n(Resultados guardados exitosamente en 'resultados_comparativos.csv')")
- 
+
     # =========================================================================
     # ANÁLISIS: ¿QUÉ ETIQUETAS CONVIENE POSTERGAR? (32 COMBINACIONES)
     # =========================================================================
@@ -82,7 +82,7 @@ def main():
     print(" ANÁLISIS: LAS 32 COMBINACIONES DE POSTERGACIÓN")
     print("="*70)
     analizar_combinaciones(data)
- 
+
     # =========================================================================
     # HORIZONTE RODANTE: VOLVER A RESOLVER EN CADA PERÍODO
     # =========================================================================
@@ -92,14 +92,17 @@ def main():
     print("\n" + "="*70)
     print(" HORIZONTE RODANTE: RESOLVER PERÍODO A PERÍODO")
     print("="*70)
- 
-    # Ejemplo detallado de un camino del árbol (se puede cambiar por cualquier otro, ej. [1, 2, 5])
-    recorrer_camino(data, [1, 3, 8])
- 
-    # Los 7 caminos, para cada política, comparados con el modelo completo
-    evaluar_todos_los_caminos(data, None, "Postergación")
-    evaluar_todos_los_caminos(data, apply_mts_policy, "Contra Stock (MTS)")
-    evaluar_todos_los_caminos(data, apply_mto_policy_varas, "Contra Pedido (MTO)")
- 
+
+    # 1) Ejemplo detallado de un camino (se puede cambiar por otro, ej. [1, 2, 5])
+    camino_ejemplo = [1, 3, 8]
+    mostrar_camino(camino_ejemplo, recorrer_camino(data, camino_ejemplo))
+
+    # 2) Los 7 caminos del árbol, para cada política, comparados con el modelo completo
+    comparar_con_modelo_completo(data, {
+        "Postergación": None,
+        "Contra Stock": apply_mts_policy,
+        "Contra Pedido": apply_mto_policy_varas,
+    })
+
 if __name__ == "__main__":
     main()
