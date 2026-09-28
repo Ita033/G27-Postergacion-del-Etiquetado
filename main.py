@@ -5,7 +5,7 @@ from src.core_model import build_base_model
 from src.policies import apply_mto_policy_varas, apply_mts_policy
 from src.kpi_calculator import extract_results
 from combinaciones_32 import analizar_combinaciones
-from src.horizonte_rodante import recorrer_camino, mostrar_camino, comparar_con_modelo_completo
+from src.replanificacion import correr_todos_los_caminos, mostrar_por_camino, comparar_con_modelo_completo
 
 def main():
     # 1. Cargar Datos
@@ -84,25 +84,31 @@ def main():
     analizar_combinaciones(data)
 
     # =========================================================================
-    # HORIZONTE RODANTE: VOLVER A RESOLVER EN CADA PERÍODO
+    # RE-PLANIFICACIÓN PERÍODO A PERÍODO (HORIZONTE DECRECIENTE)
     # =========================================================================
     # En cada período se vuelve a resolver desde el nodo que ocurrió, partiendo con el
     # inventario (y lo embotellado en camino) que dejó el período anterior.
-    # La lógica está en src/horizonte_rodante.py.
+    # No es un horizonte rodante: el árbol no cambia y el horizonte se achica (3, 2, 1 períodos).
+    # Sirve para mostrar qué se sabe y qué se decide en cada período (no anticipatividad).
+    # La lógica está en src/replanificacion.py.
     print("\n" + "="*70)
-    print(" HORIZONTE RODANTE: RESOLVER PERÍODO A PERÍODO")
+    print(" RE-PLANIFICACIÓN PERÍODO A PERÍODO (HORIZONTE DECRECIENTE)")
     print("="*70)
+    print("En cada período se vuelve a resolver el modelo desde el nodo que ocurrió,")
+    print("partiendo con lo que dejó el período anterior, y se aplica solo lo de ese período.")
 
-    # 1) Ejemplo detallado de un camino (se puede cambiar por otro, ej. [1, 2, 5])
-    camino_ejemplo = [1, 3, 8]
-    mostrar_camino(camino_ejemplo, recorrer_camino(data, camino_ejemplo))
-
-    # 2) Los 7 caminos del árbol, para cada política, comparados con el modelo completo
-    comparar_con_modelo_completo(data, {
+    politicas_replanif = {
         "Postergación": None,
         "Contra Stock": apply_mts_policy,
         "Contra Pedido": apply_mto_policy_varas,
-    })
+    }
+    resultados_replanif = correr_todos_los_caminos(data, politicas_replanif)
+
+    # 1) Cada uno de los 7 caminos del árbol, período a período, comparando las políticas
+    mostrar_por_camino(data, resultados_replanif)
+
+    # 2) Costo de los 7 caminos y comparación con el modelo completo
+    comparar_con_modelo_completo(data, politicas_replanif, resultados_replanif)
 
 if __name__ == "__main__":
     main()

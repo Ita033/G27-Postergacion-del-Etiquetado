@@ -1,8 +1,14 @@
 """
-horizonte_rodante.py
+replanificacion.py
 
-Resolver el modelo período a período (horizonte rodante), partiendo cada vez con el
-inventario con que cerró el período anterior.
+Re-planificación período a período (horizonte decreciente): se vuelve a resolver el modelo
+en cada período, partiendo con el inventario con que cerró el período anterior.
+
+Ojo, no es un horizonte rodante en sentido estricto: en un horizonte rodante el horizonte
+avanza (se agrega un período nuevo al final) y se actualizan los pronósticos. Acá el árbol
+y las probabilidades no cambian y el horizonte se achica (3, 2 y 1 períodos), así que lo
+usamos para mostrar qué se sabe y qué se decide en cada período, y para verificar que el
+modelo no usa información futura (no anticipatividad).
 
 Cómo funciona, siguiendo un camino del árbol (por ejemplo N1 -> N3 -> N8):
   Período 1: se resuelve el árbol completo desde N1 y se aplican SOLO las decisiones de N1.
@@ -19,7 +25,7 @@ sabemos que estamos en N3, las ramas N2 y N4 ya no pueden ocurrir.
 
 Como el árbol y las probabilidades no cambian, cada nueva corrida debería repetir lo que
 el modelo completo ya había decidido para ese nodo. Por eso al final comparamos el costo
-esperado del horizonte rodante con el del modelo completo: si coinciden, queda verificado
+esperado re-planificando con el del modelo completo: si coinciden, queda verificado
 que el modelo no usa información futura (no anticipatividad).
 """
 import io
@@ -130,7 +136,7 @@ def estado_al_cierre(v, data, n):
 
 
 # -----------------------------------------------------------------------------
-# Horizonte rodante
+# Re-planificación período a período
 # -----------------------------------------------------------------------------
 def nombre_camino(camino):
     """[1, 3, 8] -> 'N1 -> N3 -> N8'"""
@@ -199,9 +205,7 @@ def recorrer_camino(data, camino, politica=None):
 def mostrar_camino(camino, periodos):
     """Imprime período a período lo que pasó en un camino, en palabras."""
     f = lambda x: f"{x:,.0f}"
-    print(f"\nEjemplo: se recorre el camino {nombre_camino(camino)}")
-    print("En cada período se vuelve a resolver el modelo desde el nodo que ocurrió,")
-    print("partiendo con lo que dejó el período anterior, y se aplica solo lo de ese período.")
+    print(f"Camino {nombre_camino(camino)}")
 
     for k, p in enumerate(periodos):
         print(f"\n  PERÍODO {p['periodo']}: se está en N{p['nodo']} (demanda del nodo: {f(p['demanda'])} botellas)")
@@ -225,45 +229,145 @@ def mostrar_camino(camino, periodos):
     print(f"\n  Costo total del camino {nombre_camino(camino)}: ${f(total)}")
 
 
-def comparar_con_modelo_completo(data, politicas):
+def correr_todos_los_caminos(data, politicas):
     """
-    Para cada política corre el horizonte rodante en los 7 caminos del árbol y compara con
-    resolver el modelo completo una sola vez.
-      - Costo de cada camino = suma de lo que se paga en sus 3 períodos.
-      - Costo esperado = cada camino ponderado por la probabilidad de su hoja.
-    Si el costo esperado coincide, el modelo completo ya decidía cada período sin usar
-    información futura (no anticipatividad).
+    Re-planifica período a período en los 7 caminos del árbol para cada política.
     politicas: diccionario {nombre: función de policies.py o None para postergación}
+    Devuelve resultados[nombre][camino] = lista de períodos (lo que entrega recorrer_camino).
+    """
+    return {nombre: {tuple(c): recorrer_camino(data, c, politica) for c in caminos(data)}
+            for nombre, politica in politicas.items()}
+
+
+def mostrar_por_nodo(data, resultados):
+    """
+    Una tabla por nodo del árbol comparando las políticas: qué llega, qué decide cada
+    política en ese nodo, con qué cierra y cuánto cuesta ese período.
+    En un árbol a cada nodo se llega por un único camino, así que lo que se decide en un
+    nodo es siempre lo mismo, sin importar qué pase después.
+    """
+    f = lambda x: f"{x:,.0f}"
+    nombres = list(resultados)
+
+    # Lo que pasó en cada nodo, para cada política (se toma de cualquier camino que pase por él)
+    por_nodo = {nombre: {} for nombre in nombres}
+    for nombre in nombres:
+        for periodos in resultados[nombre].values():
+            for p in periodos:
+                por_nodo[nombre].setdefault(p['nodo'], p)
+
+    cols = [("Llega emb.", 'llega_embotellado'), ("Embot. s/et", 'embotella_sin_etiqueta'),
+            ("Embot.+etiq", 'embotella_y_etiqueta'), ("Etiqueta", 'etiqueta_desde_wip'),
+            ("Fin s/etiq", 'cierra_wip'), ("Fin termin.", 'cierra_terminado'),
+            ("Atrasadas", 'cierra_atrasos')]
+    ancho_nombre = max(len(x) for x in nombres) + 2
+    encabezado = f"  {'Política':<{ancho_nombre}}" + "".join(f"{c:>12}" for c, _ in cols) + f"{'Costo período':>16}"
+
+    print("\nQué hace cada política en cada nodo (botellas):")
+    print("  Llega emb.  = lo embotellado en el período anterior, que recién llega a este nodo")
+    print("  Embot. s/et = embotella sin etiqueta (queda como WIP y llega al período siguiente)")
+    print("  Embot.+etiq = embotella y etiqueta juntos (llega al período siguiente)")
+    print("  Etiqueta    = etiqueta botellas del WIP (cubre la demanda de este mismo período)")
+    print("  Fin ...     = lo que queda al cierre del nodo y pasa al período siguiente")
+
+    for n in data['nodos']:
+        padre = data['antecesores'][n]
+        desde = "inicio del horizonte" if padre == 0 else f"se llega desde N{padre}"
+        demanda = por_nodo[nombres[0]][n]['demanda']
+        print(f"\nN{n} | período {data['periodos_nodo'][n]} | {desde} | prob. {data['probabilidades'][n]:.3f}"
+              f" | demanda {f(demanda)}")
+        print(encabezado)
+        for nombre in nombres:
+            p = por_nodo[nombre][n]
+            print(f"  {nombre:<{ancho_nombre}}" + "".join(f"{f(p[k]):>12}" for _, k in cols)
+                  + f"{'$' + f(p['costo_periodo']):>16}")
+
+
+COLUMNAS = [("Llega emb.", 'llega_embotellado'), ("Embot.s/et", 'embotella_sin_etiqueta'),
+            ("Embot+etiq", 'embotella_y_etiqueta'), ("Etiqueta", 'etiqueta_desde_wip'),
+            ("Fin s/etiq", 'cierra_wip'), ("Fin termin", 'cierra_terminado'),
+            ("Atrasadas", 'cierra_atrasos')]
+
+
+def explicar_columnas():
+    print("\nColumnas (en botellas):")
+    print("  Llega emb.  = lo embotellado en el período anterior, que recién llega a este nodo")
+    print("  Embot.s/et  = embotella sin etiqueta (queda como WIP y llega al período siguiente)")
+    print("  Embot+etiq  = embotella y etiqueta juntos (llega al período siguiente)")
+    print("  Etiqueta    = etiqueta botellas del WIP (cubre la demanda de este mismo período)")
+    print("  Fin ...     = lo que queda al cierre del nodo y pasa al período siguiente")
+
+
+def mostrar_por_camino(data, resultados):
+    """
+    Para cada uno de los 7 caminos del árbol, una tabla período a período comparando las
+    políticas: en cada período (nodo del camino) una fila por política con lo que llega, lo
+    que decide, con qué cierra y cuánto cuesta. Al final, el costo total del camino.
+    """
+    f = lambda x: f"{x:,.0f}"
+    nombres = list(resultados)
+    todos = caminos(data)
+    ancho_pol = max(len(x) for x in nombres) + 2
+    encabezado = (f"  {'Per':<4}{'Nodo':<6}{'Demanda':>9}  {'Política':<{ancho_pol}}"
+                  + "".join(f"{c:>11}" for c, _ in COLUMNAS) + f"{'Costo período':>16}")
+
+    explicar_columnas()
+    for k, c in enumerate(todos, start=1):
+        print("\n" + "=" * len(encabezado))
+        print(f"CAMINO {k} de {len(todos)}: {nombre_camino(c)}   (probabilidad {data['probabilidades'][c[-1]]:.3f})")
+        print("=" * len(encabezado))
+        print(encabezado)
+        for t, n in enumerate(c):
+            for q, nombre in enumerate(nombres):
+                p = resultados[nombre][tuple(c)][t]
+                # período, nodo y demanda solo en la primera fila del período
+                inicio = (f"  {p['periodo']:<4}{'N' + str(n):<6}{f(p['demanda']):>9}  " if q == 0
+                          else f"  {'':<4}{'':<6}{'':>9}  ")
+                print(inicio + f"{nombre:<{ancho_pol}}" + "".join(f"{f(p[key]):>11}" for _, key in COLUMNAS)
+                      + f"{'$' + f(p['costo_periodo']):>16}")
+            print("  " + "-" * (len(encabezado) - 2))
+        totales = " | ".join(f"{x} ${f(sum(p['costo_periodo'] for p in resultados[x][tuple(c)]))}" for x in nombres)
+        print(f"  Costo total del camino: {totales}")
+
+
+def comparar_con_modelo_completo(data, politicas, resultados=None):
+    """
+    Costo de cada camino re-planificando período a período, para cada política, y comparación del costo
+    esperado con resolver el modelo completo una sola vez.
+      - Costo de un camino = suma de lo que se paga en sus 3 períodos.
+      - Costo esperado = cada camino ponderado por la probabilidad de su hoja.
+    Si coinciden, el modelo completo ya decidía cada período sin usar información futura
+    (no anticipatividad).
     """
     f = lambda x: f"{x:,.0f}"
     todos = caminos(data)
-    costos = {}   # costos[nombre][camino] = costo del camino con horizonte rodante
-    completo = {}  # costo esperado del modelo completo (una sola corrida)
-    for nombre, politica in politicas.items():
-        costos[nombre] = {tuple(c): sum(p['costo_periodo'] for p in recorrer_camino(data, c, politica))
-                          for c in todos}
-        m_full, _ = resolver(datos_subarbol(data, todos[0][0]), politica)
-        completo[nombre] = m_full.ObjVal
-
+    if resultados is None:
+        resultados = correr_todos_los_caminos(data, politicas)
     nombres = list(politicas)
-    ancho = max(18, max(len(x) for x in nombres) + 2)
-    print("\nCosto de cada camino re-planificando en cada período (horizonte rodante):")
-    print(f"{'Camino':<18} {'Prob.':>6}" + "".join(f"{x:>{ancho}}" for x in nombres))
+
+    costos = {x: {tuple(c): sum(p['costo_periodo'] for p in resultados[x][tuple(c)]) for c in todos}
+              for x in nombres}
+    completo = {x: resolver(datos_subarbol(data, todos[0][0]), politicas[x])[0].ObjVal for x in nombres}
+
+    ancho = max(16, max(len(x) for x in nombres) + 2)
+    print("\nCosto total de cada camino (suma de sus 3 períodos):")
+    print(f"  {'Camino':<20} {'Prob.':>6}" + "".join(f"{x:>{ancho}}" for x in nombres))
     for c in todos:
         p_hoja = data['probabilidades'][c[-1]]
-        print(f"{nombre_camino(c):<18} {p_hoja:>6.3f}" + "".join(f"{f(costos[x][tuple(c)]):>{ancho}}" for x in nombres))
+        print(f"  {nombre_camino(c):<20} {p_hoja:>6.3f}"
+              + "".join(f"{'$' + f(costos[x][tuple(c)]):>{ancho}}" for x in nombres))
 
     esperado = {x: sum(data['probabilidades'][c[-1]] * costos[x][tuple(c)] for c in todos) for x in nombres}
-    print("-" * (25 + ancho * len(nombres)))
-    print(f"{'Costo esperado (rodante)':<25}" + "".join(f"{f(esperado[x]):>{ancho}}" for x in nombres))
-    print(f"{'Costo esperado (completo)':<25}" + "".join(f"{f(completo[x]):>{ancho}}" for x in nombres))
-    iguales = all(abs(esperado[x] - completo[x]) <= 1e-6 * max(1.0, completo[x]) for x in nombres)
-    print(f"{'¿Coinciden?':<25}" + "".join(f"{('Sí' if abs(esperado[x] - completo[x]) <= 1e-6 * max(1.0, completo[x]) else 'NO'):>{ancho}}" for x in nombres))
+    coincide = {x: abs(esperado[x] - completo[x]) <= 1e-6 * max(1.0, completo[x]) for x in nombres}
+    print("  " + "-" * (27 + ancho * len(nombres)))
+    print(f"  {'Costo esperado (re-planif.)':<27}" + "".join(f"{'$' + f(esperado[x]):>{ancho}}" for x in nombres))
+    print(f"  {'Costo esperado (completo)':<27}" + "".join(f"{'$' + f(completo[x]):>{ancho}}" for x in nombres))
+    print(f"  {'¿Coinciden?':<27}" + "".join(f"{('Sí' if coincide[x] else 'NO'):>{ancho}}" for x in nombres))
 
-    if iguales:
+    if all(coincide.values()):
         print("\nConclusión: re-planificar en cada período da el mismo costo que resolver el árbol completo")
         print("una vez. O sea, el modelo multietapa ya decidía cada período usando solo la información")
         print("disponible en ese momento (no anticipatividad).")
     else:
-        print("\nOjo: hay diferencias entre el horizonte rodante y el modelo completo. Revisar.")
+        print("\nOjo: hay diferencias entre re-planificar y el modelo completo. Revisar.")
     return esperado, completo

@@ -1,11 +1,11 @@
 import gurobipy as gp
 from gurobipy import GRB
- 
+
 def build_base_model(data):
- 
+
     # Construye el modelo base (Postergación) de Programación Estocástica Multietapa.
     # Retorna el objeto del modelo Gurobi y un diccionario con las variables.
- 
+
     print("Construyendo el modelo base en Gurobi (Postergación habilitada)...")
     
     # Crear entorno mudo para no saturar la consola
@@ -48,12 +48,12 @@ def build_base_model(data):
     # =========================================================================
     # Por defecto (una sola corrida) el nodo 0 representa el inicio del horizonte:
     # inventarios iniciales del Anexo A y la producción predefinida que cubre la demanda del nodo 1.
-    # En el horizonte rodante (src/horizonte_rodante.py) el nodo 0 representa en cambio el
+    # Al re-planificar período a período (src/replanificacion.py) el nodo 0 representa en cambio el
     # cierre del período anterior: data['condiciones_iniciales'] trae el inventario con que
     # se parte y lo que se embotelló en el período anterior y todavía viene "en camino"
     # (lo embotellado queda disponible una etapa después).
     ini = data.get('condiciones_iniciales')
- 
+
     for i in vinos:
         # Inventario inicial sin etiquetar y embotellado sin etiqueta que llega al primer nodo
         s_b_0 = data['inv_inicial_wip'] if ini is None else ini['s_b'][i]
@@ -73,7 +73,7 @@ def build_base_model(data):
             # producción predefinida que cubre la demanda del nodo 1 (Anexo A).
             w_bl_0 = data['demandas'][(i, j, 1)] if ini is None else ini['w_bl'][(i, j)]
             m.addConstr(w_bl[i, j, 0] == w_bl_0, name=f"init_wbl_{i}_{j}")
- 
+
     # =========================================================================
     # 3. Restricciones Estructurales (Nodos 1 al 11)
     # =========================================================================
@@ -104,7 +104,7 @@ def build_base_model(data):
                 # Lógicas Big-M para etiquetado
                 m.addConstr(w_bl[i, j, n] <= data['M_wbl'] * z_bl[i, j, n], name=f"bigM_bl_{i}_{j}_{n}")
                 m.addConstr(w_l[i, j, n] <= data['M_wl'] * z_l[i, j, n], name=f"bigM_l_{i}_{j}_{n}")
- 
+
     # =========================================================================
     # 4. Función Objetivo Estocástica (Minimizar Costo Esperado)
     # =========================================================================
