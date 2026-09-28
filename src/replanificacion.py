@@ -315,8 +315,8 @@ def mostrar_por_camino(data, resultados, abreviaturas=None):
       - Columnas: los 3 períodos del camino y, dentro de cada período, las políticas.
       - Filas: el balance de cada período, agrupado en botellas sin etiquetar, botellas
         terminadas y pedidos, más lo que se produce para el período siguiente y el costo.
-    Leyendo una fila de izquierda a derecha se ve cómo el "Cierre" de un período pasa a ser
-    el "Inicio" del siguiente.
+    Leyendo una fila de izquierda a derecha se ve cómo el "Inventario al cierre" de un período
+    pasa a ser el "Inventario al inicio" del siguiente.
     """
     nombres = list(resultados)
     abreviaturas = abreviaturas or {x: x[:9] for x in nombres}
@@ -336,16 +336,16 @@ def mostrar_por_camino(data, resultados, abreviaturas=None):
 
     # (grupo, concepto, clave o función, es_costo)
     FILAS = [
-        ("SIN ETIQUETAR", "  Inicio (del período anterior)", 'parte_wip'),
-        ("", "+ Llega (embotellado antes)", 'llega_sin_etiqueta'),
+        ("SIN ETIQUETAR", "  Inventario al inicio", 'parte_wip'),
+        ("", "+ Embotellado período anterior", 'llega_sin_etiqueta'),
         ("", "- Se etiqueta ahora", 'etiqueta_desde_wip'),
-        ("", "= Cierre (pasa al siguiente)", 'cierra_wip'),
+        ("", "= Inventario al cierre", 'cierra_wip'),
         None,
-        ("TERMINADAS", "  Inicio (del período anterior)", 'parte_terminado'),
-        ("", "+ Llega (embot.+etiq. antes)", 'llega_etiquetado'),
+        ("TERMINADAS", "  Inventario al inicio", 'parte_terminado'),
+        ("", "+ Embot.+etiq. período anterior", 'llega_etiquetado'),
         ("", "+ Se etiqueta ahora", 'etiqueta_desde_wip'),
         ("", "- Se entrega a clientes", 'entregado'),
-        ("", "= Cierre (pasa al siguiente)", 'cierra_terminado'),
+        ("", "= Inventario al cierre", 'cierra_terminado'),
         None,
         ("PEDIDOS", "  Atrasos al inicio", 'parte_atrasos'),
         ("", "+ Demanda del nodo", 'demanda'),
@@ -360,7 +360,11 @@ def mostrar_por_camino(data, resultados, abreviaturas=None):
     ]
 
     print("\nPolíticas: " + " | ".join(f"{abreviaturas[x]} = {x}" for x in nombres))
-    print("En el período 1, 'Llega (embot.+etiq. antes)' es la producción predefinida del Anexo A.")
+    print("Inventario al inicio          = botellas que ya estaban en bodega (sobraron del período anterior).")
+    print("                                  Es el 'Inventario al cierre' del período anterior.")
+    print("Embotellado período anterior  = botellas embotelladas en el período anterior que recién ahora")
+    print("                                  están disponibles (Anexo A: lo embotellado queda disponible una etapa después).")
+    print("En el período 1, 'Embot.+etiq. período anterior' es la producción predefinida del Anexo A.")
     print("Costos sobre $100 millones se muestran en millones (M).")
 
     for k, c in enumerate(todos, start=1):
