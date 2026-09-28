@@ -87,7 +87,6 @@ def apply_mto_policy(model, vars_dict, data):
     return model
 
 
-# Mismo contra pedido con el nombre que usamos en la rama cambios-antonella
 apply_mto_policy_varas = apply_mto_policy
 
 
