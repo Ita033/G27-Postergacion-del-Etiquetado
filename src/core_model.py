@@ -1,15 +1,14 @@
 import gurobipy as gp
 from gurobipy import GRB
-
+ 
 def build_base_model(data):
-    """
-    Construye el modelo base (Postergación) de Programación Estocástica Multietapa.
-    Retorna el objeto del modelo Gurobi y un diccionario con las variables 
-    para poder modificarlas o extraer resultados fácilmente.
-    """
+ 
+    # Construye el modelo base (Postergación) de Programación Estocástica Multietapa.
+    # Retorna el objeto del modelo Gurobi y un diccionario con las variables.
+ 
     print("Construyendo el modelo base en Gurobi (Postergación habilitada)...")
     
-    # Crear entorno mudo para no saturar la consola, a menos que queramos ver el log
+    # Crear entorno mudo para no saturar la consola
     env = gp.Env(empty=True)
     env.setParam("OutputFlag", 0)
     env.start()
@@ -47,28 +46,41 @@ def build_base_model(data):
     # =========================================================================
     # 2. Restricciones de Condiciones Iniciales (Nodo 0)
     # =========================================================================
+    # Por defecto (una sola corrida) el nodo 0 representa el inicio del horizonte:
+    # inventarios iniciales del Anexo A y la producción predefinida que cubre la demanda del nodo 1.
+    # En el horizonte rodante (src/horizonte_rodante.py) el nodo 0 representa en cambio el
+    # cierre del período anterior: data['condiciones_iniciales'] trae el inventario con que
+    # se parte y lo que se embotelló en el período anterior y todavía viene "en camino"
+    # (lo embotellado queda disponible una etapa después).
+    ini = data.get('condiciones_iniciales')
+ 
     for i in vinos:
-        # Inventarios iniciales WIP
-        m.addConstr(s_b[i, 0] == data['inv_inicial_wip'], name=f"init_sb_{i}")
-        m.addConstr(w_b[i, 0] == 0, name=f"init_wb_{i}")
+        # Inventario inicial sin etiquetar y embotellado sin etiqueta que llega al primer nodo
+        s_b_0 = data['inv_inicial_wip'] if ini is None else ini['s_b'][i]
+        w_b_0 = 0 if ini is None else ini['w_b'][i]
+        m.addConstr(s_b[i, 0] == s_b_0, name=f"init_sb_{i}")
+        m.addConstr(w_b[i, 0] == w_b_0, name=f"init_wb_{i}")
         
         for j in etiquetas[i]:
-            # Inventarios y backorders iniciales FG
-            m.addConstr(s_bl[i, j, 0] == data['inv_inicial_fg'], name=f"init_sbl_{i}_{j}")
-            m.addConstr(b_bl[i, j, 0] == data['inv_inicial_bo'], name=f"init_bbl_{i}_{j}")
+            # Inventario inicial terminado y atrasos iniciales
+            s_bl_0 = data['inv_inicial_fg'] if ini is None else ini['s_bl'][(i, j)]
+            b_bl_0 = data['inv_inicial_bo'] if ini is None else ini['b_bl'][(i, j)]
+            m.addConstr(s_bl[i, j, 0] == s_bl_0, name=f"init_sbl_{i}_{j}")
+            m.addConstr(b_bl[i, j, 0] == b_bl_0, name=f"init_bbl_{i}_{j}")
             m.addConstr(w_l[i, j, 0] == 0, name=f"init_wl_{i}_{j}")
             
-            # IMPORTANTE: Según el Anexo A, la demanda del nodo 1 se satisface 
-            # con producción predefinida equivalente a esa demanda en t=0.
-            m.addConstr(w_bl[i, j, 0] == data['demandas'][(i, j, 1)], name=f"init_wbl_{i}_{j}")
-
+            # Embotellado y etiquetado que llega al primer nodo. En una sola corrida es la
+            # producción predefinida que cubre la demanda del nodo 1 (Anexo A).
+            w_bl_0 = data['demandas'][(i, j, 1)] if ini is None else ini['w_bl'][(i, j)]
+            m.addConstr(w_bl[i, j, 0] == w_bl_0, name=f"init_wbl_{i}_{j}")
+ 
     # =========================================================================
     # 3. Restricciones Estructurales (Nodos 1 al 11)
     # =========================================================================
     for n in nodos:
         ant = antecesores[n]
         
-        # A. Capacidad de Línea
+        # Capacidad de Línea
         tiempo_b = gp.quicksum(data['t_wb'] * w_b[i, n] + data['t_zb'] * z_b[i, n] for i in vinos)
         tiempo_bl = gp.quicksum(data['t_wbl'] * w_bl[i, j, n] + data['t_zbl'] * z_bl[i, j, n] for i in vinos for j in etiquetas[i])
         tiempo_l = gp.quicksum(data['t_wl'] * w_l[i, j, n] + data['t_zl'] * z_l[i, j, n] for i in vinos for j in etiquetas[i])
@@ -76,23 +88,23 @@ def build_base_model(data):
         m.addConstr(tiempo_b + tiempo_bl + tiempo_l <= data['capacidad_horas'], name=f"capacidad_nodo_{n}")
         
         for i in vinos:
-            # B. Ecuación de Balance WIP (Botellas sin etiquetar)
+            # Ecuación de Balance WIP (Botellas sin etiquetar)
             m.addConstr(s_b[i, n] == s_b[i, ant] + w_b[i, ant] - gp.quicksum(w_l[i, j, n] for j in etiquetas[i]), name=f"bal_wip_{i}_{n}")
             
-            # C. Lógicas Big-M para solo embotellado
+            # Lógicas Big-M para embotellado
             m.addConstr(w_b[i, n] <= data['M_wb'] * z_b[i, n], name=f"bigM_b_{i}_{n}")
             
             for j in etiquetas[i]:
-                # D. Ecuación de Balance Producto Terminado (FG)
+                # Ecuación de Balance Producto Terminado (FG)
                 m.addConstr(
                     s_bl[i, j, n] - b_bl[i, j, n] == s_bl[i, j, ant] - b_bl[i, j, ant] + w_bl[i, j, ant] + w_l[i, j, n] - data['demandas'][(i, j, n)], 
                     name=f"bal_fg_{i}_{j}_{n}"
                 )
                 
-                # E. Lógicas Big-M para operaciones de etiquetado
+                # Lógicas Big-M para etiquetado
                 m.addConstr(w_bl[i, j, n] <= data['M_wbl'] * z_bl[i, j, n], name=f"bigM_bl_{i}_{j}_{n}")
                 m.addConstr(w_l[i, j, n] <= data['M_wl'] * z_l[i, j, n], name=f"bigM_l_{i}_{j}_{n}")
-
+ 
     # =========================================================================
     # 4. Función Objetivo Estocástica (Minimizar Costo Esperado)
     # =========================================================================
@@ -113,7 +125,7 @@ def build_base_model(data):
     
     m.update()
     
-    # Agrupamos las variables en un diccionario para poder manipularlas desde policies.py
+    # Agrupamos las variables en un diccionario
     vars_dict = {
         'w_b': w_b, 'w_bl': w_bl, 'w_l': w_l,
         's_b': s_b, 's_bl': s_bl, 'b_bl': b_bl,
