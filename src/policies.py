@@ -56,7 +56,7 @@
 
 def apply_mto_policy(model, vars_dict, data):
     """
-    Política Contra Pedido (MTO), según Varas et al. (2018), restricciones (17)-(18):
+    Política Contra Pedido (MTO):
         z_l  = 0  -> no hay set-up de solo etiquetar, o sea no se posterga
         s_bl = 0  -> no se guarda producto terminado
     Todo se produce acoplado (w_bl), pero como no puede sobrar nada, el modelo solo
