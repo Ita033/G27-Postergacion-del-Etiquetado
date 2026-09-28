@@ -168,19 +168,39 @@ def recorrer_camino(data, camino, politica=None):
         if condiciones is None:
             parte_wip = data['inv_inicial_wip'] * len(vinos)
             parte_terminado = data['inv_inicial_fg'] * sum(len(etiquetas[i]) for i in vinos)
-            # Anexo A: la demanda del nodo 1 se cubre con producción predefinida
-            llega = sum(data['demandas'][(i, j, n)] for i in vinos for j in etiquetas[i])
+            parte_atrasos = data['inv_inicial_bo'] * sum(len(etiquetas[i]) for i in vinos)
+            # Anexo A: la demanda del nodo 1 se cubre con producción predefinida (embotellada y etiquetada)
+            llega_sin_etiqueta = 0.0
+            llega_etiquetado = sum(data['demandas'][(i, j, n)] for i in vinos for j in etiquetas[i])
+            llega = llega_etiquetado
         else:
             parte_wip = sum(condiciones['s_b'].values())
             parte_terminado = sum(condiciones['s_bl'].values())
-            llega = sum(condiciones['w_b'].values()) + sum(condiciones['w_bl'].values())
+            parte_atrasos = sum(condiciones['b_bl'].values())
+            llega_sin_etiqueta = sum(condiciones['w_b'].values())   # embotellado sin etiqueta en el nodo anterior
+            llega_etiquetado = sum(condiciones['w_bl'].values())    # embotellado y etiquetado en el nodo anterior
+            llega = llega_sin_etiqueta + llega_etiquetado
 
         # 1) Se resuelve desde el nodo que ocurrió
         data_sub = datos_subarbol(data, n, condiciones)
         m, v = resolver(data_sub, politica)
 
+        # Demanda del nodo cubierta a tiempo, producto por producto: lo que queda atrasado al
+        # cierre (b_bl) se descuenta de la demanda de este período (los atrasos antiguos se
+        # entregan primero). Entregado = demanda + atrasos que venían - atrasos al cierre.
+        a_tiempo = sum(data['demandas'][(i, j, n)] - min(data['demandas'][(i, j, n)], v['b_bl'][i, j, n].X)
+                       for i in vinos for j in etiquetas[i])
+        entregado = sum(data['demandas'][(i, j, n)] + v['b_bl'][i, j, 0].X - v['b_bl'][i, j, n].X
+                        for i in vinos for j in etiquetas[i])
+
         # 2) De esta corrida solo se aplica lo del nodo n
         periodos.append({
+            'viene_de': data['antecesores'][n],
+            'llega_sin_etiqueta': llega_sin_etiqueta,
+            'llega_etiquetado': llega_etiquetado,
+            'parte_atrasos': parte_atrasos,
+            'demanda_a_tiempo': a_tiempo,
+            'entregado': entregado,
             'periodo': data['periodos_nodo'][n],
             'nodo': n,
             'demanda': sum(data['demandas'][(i, j, n)] for i in vinos for j in etiquetas[i]),
@@ -283,52 +303,103 @@ def mostrar_por_nodo(data, resultados):
                   + f"{'$' + f(p['costo_periodo']):>16}")
 
 
-COLUMNAS = [("Llega emb.", 'llega_embotellado'), ("Embot.s/et", 'embotella_sin_etiqueta'),
-            ("Embot+etiq", 'embotella_y_etiqueta'), ("Etiqueta", 'etiqueta_desde_wip'),
-            ("Fin s/etiq", 'cierra_wip'), ("Fin termin", 'cierra_terminado'),
-            ("Atrasadas", 'cierra_atrasos')]
+
+def _pesos(x):
+    """Formato corto para costos: $1,092,645 o, sobre 100 millones, $1,119.5M."""
+    return f"${x / 1e6:,.1f}M" if abs(x) >= 1e8 else f"${x:,.0f}"
 
 
-def explicar_columnas():
-    print("\nColumnas (en botellas):")
-    print("  Llega emb.  = lo embotellado en el período anterior, que recién llega a este nodo")
-    print("  Embot.s/et  = embotella sin etiqueta (queda como WIP y llega al período siguiente)")
-    print("  Embot+etiq  = embotella y etiqueta juntos (llega al período siguiente)")
-    print("  Etiqueta    = etiqueta botellas del WIP (cubre la demanda de este mismo período)")
-    print("  Fin ...     = lo que queda al cierre del nodo y pasa al período siguiente")
-
-
-def mostrar_por_camino(data, resultados):
+def mostrar_por_camino(data, resultados, abreviaturas=None):
     """
-    Para cada uno de los 7 caminos del árbol, una tabla período a período comparando las
-    políticas: en cada período (nodo del camino) una fila por política con lo que llega, lo
-    que decide, con qué cierra y cuánto cuesta. Al final, el costo total del camino.
+    Una tabla por cada uno de los 7 caminos del árbol.
+      - Columnas: los 3 períodos del camino y, dentro de cada período, las políticas.
+      - Filas: el balance de cada período, agrupado en botellas sin etiquetar, botellas
+        terminadas y pedidos, más lo que se produce para el período siguiente y el costo.
+    Leyendo una fila de izquierda a derecha se ve cómo el "Cierre" de un período pasa a ser
+    el "Inicio" del siguiente.
     """
-    f = lambda x: f"{x:,.0f}"
     nombres = list(resultados)
+    abreviaturas = abreviaturas or {x: x[:9] for x in nombres}
     todos = caminos(data)
-    ancho_pol = max(len(x) for x in nombres) + 2
-    encabezado = (f"  {'Per':<4}{'Nodo':<6}{'Demanda':>9}  {'Política':<{ancho_pol}}"
-                  + "".join(f"{c:>11}" for c, _ in COLUMNAS) + f"{'Costo período':>16}")
+    W_GRUPO, W_CONCEPTO, W_NUM = 13, 31, 10
+    n_pol = len(nombres)
+    w_periodo = W_NUM * n_pol + (n_pol - 1)  # ancho de un bloque de período (con separadores)
 
-    explicar_columnas()
+    def separador(c='-'):
+        return "+" + c * (W_GRUPO + 2) + "+" + c * (W_CONCEPTO + 2) + ("+" + c * (w_periodo + 2)) * 3 + "+"
+
+    def fila(grupo, concepto, celdas_por_periodo):
+        txt = f"| {grupo:<{W_GRUPO}} | {concepto:<{W_CONCEPTO}} |"
+        for celdas in celdas_por_periodo:
+            txt += " " + " ".join(f"{x:>{W_NUM}}" for x in celdas) + " |"
+        print(txt)
+
+    # (grupo, concepto, clave o función, es_costo)
+    FILAS = [
+        ("SIN ETIQUETAR", "  Inicio (del período anterior)", 'parte_wip'),
+        ("", "+ Llega (embotellado antes)", 'llega_sin_etiqueta'),
+        ("", "- Se etiqueta ahora", 'etiqueta_desde_wip'),
+        ("", "= Cierre (pasa al siguiente)", 'cierra_wip'),
+        None,
+        ("TERMINADAS", "  Inicio (del período anterior)", 'parte_terminado'),
+        ("", "+ Llega (embot.+etiq. antes)", 'llega_etiquetado'),
+        ("", "+ Se etiqueta ahora", 'etiqueta_desde_wip'),
+        ("", "- Se entrega a clientes", 'entregado'),
+        ("", "= Cierre (pasa al siguiente)", 'cierra_terminado'),
+        None,
+        ("PEDIDOS", "  Atrasos al inicio", 'parte_atrasos'),
+        ("", "+ Demanda del nodo", 'demanda'),
+        ("", "- Se entrega a clientes", 'entregado'),
+        ("", "= Atrasos al cierre", 'cierra_atrasos'),
+        ("", "  Demanda cubierta a tiempo", 'demanda_a_tiempo'),
+        None,
+        ("PRODUCE PARA", "  Embotella sin etiqueta", 'embotella_sin_etiqueta'),
+        ("EL SIGUIENTE", "  Embotella y etiqueta juntos", 'embotella_y_etiqueta'),
+        None,
+        ("COSTO", "  Costo del período", 'costo_periodo'),
+    ]
+
+    print("\nPolíticas: " + " | ".join(f"{abreviaturas[x]} = {x}" for x in nombres))
+    print("En el período 1, 'Llega (embot.+etiq. antes)' es la producción predefinida del Anexo A.")
+    print("Costos sobre $100 millones se muestran en millones (M).")
+
     for k, c in enumerate(todos, start=1):
-        print("\n" + "=" * len(encabezado))
-        print(f"CAMINO {k} de {len(todos)}: {nombre_camino(c)}   (probabilidad {data['probabilidades'][c[-1]]:.3f})")
-        print("=" * len(encabezado))
-        print(encabezado)
+        per = [[resultados[x][tuple(c)][t] for x in nombres] for t in range(len(c))]  # per[t][política]
+        print(f"\nCAMINO {k} de {len(todos)}: {nombre_camino(c)}   (probabilidad del camino {data['probabilidades'][c[-1]]:.3f})")
+        print(separador('='))
+        # Encabezado: período, nodo y demanda; y debajo las políticas
+        cab = f"| {'':<{W_GRUPO}} | {'':<{W_CONCEPTO}} |"
         for t, n in enumerate(c):
-            for q, nombre in enumerate(nombres):
-                p = resultados[nombre][tuple(c)][t]
-                # período, nodo y demanda solo en la primera fila del período
-                inicio = (f"  {p['periodo']:<4}{'N' + str(n):<6}{f(p['demanda']):>9}  " if q == 0
-                          else f"  {'':<4}{'':<6}{'':>9}  ")
-                print(inicio + f"{nombre:<{ancho_pol}}" + "".join(f"{f(p[key]):>11}" for _, key in COLUMNAS)
-                      + f"{'$' + f(p['costo_periodo']):>16}")
-            print("  " + "-" * (len(encabezado) - 2))
-        totales = " | ".join(f"{x} ${f(sum(p['costo_periodo'] for p in resultados[x][tuple(c)]))}" for x in nombres)
-        print(f"  Costo total del camino: {totales}")
+            cab += " " + f"Período {per[t][0]['periodo']} - N{n}".center(w_periodo) + " |"
+        print(cab)
+        cab = f"| {'':<{W_GRUPO}} | {'(botellas)':<{W_CONCEPTO}} |"
+        for t, n in enumerate(c):
+            cab += " " + " ".join(f"{abreviaturas[x]:>{W_NUM}}" for x in nombres) + " |"
+        print(cab)
+        print(separador('='))
 
+        for item in FILAS:
+            if item is None:
+                print(separador())
+                continue
+            grupo, concepto, clave = item
+            celdas = []
+            for t in range(len(c)):
+                vals = [p[clave] for p in per[t]]
+                celdas.append([_pesos(x) if clave == 'costo_periodo' else f"{x:,.0f}" for x in vals])
+            fila(grupo, concepto, celdas)
+        print(separador('='))
+
+        totales = [sum(p['costo_periodo'] for p in resultados[x][tuple(c)]) for x in nombres]
+        print("  Costo total del camino: " + " | ".join(f"{x} ${t:,.0f}" for x, t in zip(nombres, totales)))
+
+        # Chequeo: los balances tienen que cuadrar (si no, hay un error en el traspaso)
+        for fila_t in per:
+            for p in fila_t:
+                assert abs(p['parte_wip'] + p['llega_sin_etiqueta'] - p['etiqueta_desde_wip'] - p['cierra_wip']) < 1e-3
+                assert abs(p['parte_terminado'] + p['llega_etiquetado'] + p['etiqueta_desde_wip']
+                           - p['entregado'] - p['cierra_terminado']) < 1e-3
+                assert abs(p['parte_atrasos'] + p['demanda'] - p['entregado'] - p['cierra_atrasos']) < 1e-3
 
 def comparar_con_modelo_completo(data, politicas, resultados=None):
     """

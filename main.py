@@ -105,7 +105,8 @@ def main():
     resultados_replanif = correr_todos_los_caminos(data, politicas_replanif)
 
     # 1) Cada uno de los 7 caminos del árbol, período a período, comparando las políticas
-    mostrar_por_camino(data, resultados_replanif)
+    mostrar_por_camino(data, resultados_replanif,
+                       abreviaturas={"Postergación": "Posterg.", "Contra Stock": "C.Stock", "Contra Pedido": "C.Pedido"})
 
     # 2) Costo de los 7 caminos y comparación con el modelo completo
     comparar_con_modelo_completo(data, politicas_replanif, resultados_replanif)
