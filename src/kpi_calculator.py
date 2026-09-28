@@ -1,16 +1,16 @@
 from gurobipy import GRB
 
 def extract_results(model, vars_dict, data, policy_name=""):
-    """
-    Extrae los resultados óptimos de Gurobi, calcula los KPIs esperados,
-    muestra el plan de producción desagregado por período y registra el tiempo de ejecución.
-    """
+    
+    # Extrae los resultados óptimos de Gurobi, calcula los KPIs esperados, muestra el plan de
+    # producción por período y registra el tiempo de ejecución.
+    
     if model.status != GRB.OPTIMAL:
         print(f"Advertencia: El modelo {policy_name} no encontró solución óptima. Estado: {model.status}")
         return None
         
     obj_val = model.ObjVal
-    exec_time = model.Runtime  # Tiempo exacto de resolución de Gurobi en segundos
+    exec_time = model.Runtime  # Tiempo exacto de resolución (en segundos)
     
     # Desempaquetar variables
     w_b = vars_dict['w_b']
@@ -63,7 +63,7 @@ def extract_results(model, vars_dict, data, policy_name=""):
             print(f"{k}: {v}")
 
     # =========================================================================
-    # Desglose de Producción por Período (Valor Esperado Ponderado)
+    # Producción por Período (Valor Esperado Ponderado)
     # =========================================================================
     print(f"\n   [Desglose de Producción Esperada por Período]")
     
@@ -79,7 +79,7 @@ def extract_results(model, vars_dict, data, policy_name=""):
         ns_período = períodos_map[p]
         
         # Sumar volumen esperado producido en este período
-        # Nota: W_b y W_bl en el nodo 'n' se programan en ese nodo para la etapa siguiente
+        # Nota: W_b y W_bl en el nodo 'n' se programan para la etapa siguiente
         vol_wb_p = sum(prob[n] * w_b[i, n].X for n in ns_período for i in vinos)
         vol_wbl_p = sum(prob[n] * w_bl[i, j, n].X for n in ns_período for i in vinos for j in etiquetas[i])
         vol_wl_p = sum(prob[n] * w_l[i, j, n].X for n in ns_período for i in vinos for j in etiquetas[i])

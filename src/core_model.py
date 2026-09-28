@@ -2,14 +2,13 @@ import gurobipy as gp
 from gurobipy import GRB
 
 def build_base_model(data):
-    """
-    Construye el modelo base (Postergación) de Programación Estocástica Multietapa.
-    Retorna el objeto del modelo Gurobi y un diccionario con las variables 
-    para poder modificarlas o extraer resultados fácilmente.
-    """
+
+    # Construye el modelo base (Postergación) de Programación Estocástica Multietapa.
+    # Retorna el objeto del modelo Gurobi y un diccionario con las variables.
+
     print("Construyendo el modelo base en Gurobi (Postergación habilitada)...")
     
-    # Crear entorno mudo para no saturar la consola, a menos que queramos ver el log
+    # Crear entorno mudo para no saturar la consola
     env = gp.Env(empty=True)
     env.setParam("OutputFlag", 0)
     env.start()
@@ -58,8 +57,7 @@ def build_base_model(data):
             m.addConstr(b_bl[i, j, 0] == data['inv_inicial_bo'], name=f"init_bbl_{i}_{j}")
             m.addConstr(w_l[i, j, 0] == 0, name=f"init_wl_{i}_{j}")
             
-            # IMPORTANTE: Según el Anexo A, la demanda del nodo 1 se satisface 
-            # con producción predefinida equivalente a esa demanda en t=0.
+            # La demanda del nodo 1 se satisface con producción predefinida equivalente
             m.addConstr(w_bl[i, j, 0] == data['demandas'][(i, j, 1)], name=f"init_wbl_{i}_{j}")
 
     # =========================================================================
@@ -68,7 +66,7 @@ def build_base_model(data):
     for n in nodos:
         ant = antecesores[n]
         
-        # A. Capacidad de Línea
+        # Capacidad de Línea
         tiempo_b = gp.quicksum(data['t_wb'] * w_b[i, n] + data['t_zb'] * z_b[i, n] for i in vinos)
         tiempo_bl = gp.quicksum(data['t_wbl'] * w_bl[i, j, n] + data['t_zbl'] * z_bl[i, j, n] for i in vinos for j in etiquetas[i])
         tiempo_l = gp.quicksum(data['t_wl'] * w_l[i, j, n] + data['t_zl'] * z_l[i, j, n] for i in vinos for j in etiquetas[i])
@@ -76,20 +74,20 @@ def build_base_model(data):
         m.addConstr(tiempo_b + tiempo_bl + tiempo_l <= data['capacidad_horas'], name=f"capacidad_nodo_{n}")
         
         for i in vinos:
-            # B. Ecuación de Balance WIP (Botellas sin etiquetar)
+            # Ecuación de Balance WIP (Botellas sin etiquetar)
             m.addConstr(s_b[i, n] == s_b[i, ant] + w_b[i, ant] - gp.quicksum(w_l[i, j, n] for j in etiquetas[i]), name=f"bal_wip_{i}_{n}")
             
-            # C. Lógicas Big-M para solo embotellado
+            # Lógicas Big-M para embotellado
             m.addConstr(w_b[i, n] <= data['M_wb'] * z_b[i, n], name=f"bigM_b_{i}_{n}")
             
             for j in etiquetas[i]:
-                # D. Ecuación de Balance Producto Terminado (FG)
+                # Ecuación de Balance Producto Terminado (FG)
                 m.addConstr(
                     s_bl[i, j, n] - b_bl[i, j, n] == s_bl[i, j, ant] - b_bl[i, j, ant] + w_bl[i, j, ant] + w_l[i, j, n] - data['demandas'][(i, j, n)], 
                     name=f"bal_fg_{i}_{j}_{n}"
                 )
                 
-                # E. Lógicas Big-M para operaciones de etiquetado
+                # Lógicas Big-M para etiquetado
                 m.addConstr(w_bl[i, j, n] <= data['M_wbl'] * z_bl[i, j, n], name=f"bigM_bl_{i}_{j}_{n}")
                 m.addConstr(w_l[i, j, n] <= data['M_wl'] * z_l[i, j, n], name=f"bigM_l_{i}_{j}_{n}")
 
@@ -113,7 +111,7 @@ def build_base_model(data):
     
     m.update()
     
-    # Agrupamos las variables en un diccionario para poder manipularlas desde policies.py
+    # Agrupamos las variables en un diccionario
     vars_dict = {
         'w_b': w_b, 'w_bl': w_bl, 'w_l': w_l,
         's_b': s_b, 's_bl': s_bl, 'b_bl': b_bl,

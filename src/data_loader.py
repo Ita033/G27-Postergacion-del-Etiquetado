@@ -3,17 +3,16 @@ import re
 import pandas as pd
 
 def load_data(filepath):
-    """
-    Extrae dinámicamente todos los parámetros desde el archivo Excel del Anexo A.
-    No contiene parámetros hardcodeados y valida cada hoja de entrada.
-    """
+
+    # Extrae todos los parámetros desde el archivo Excel. *Encabezados en fila 3 -> skiprows=2
+
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"No se encontró el archivo en la ruta: {filepath}")
 
     xls = pd.ExcelFile(filepath)
 
     # =========================================================================
-    # 1. HOJA: Configuracion (Encabezados en fila 3 -> skiprows=2)
+    # Hoja 1: Configuracion
     # =========================================================================
     df_config = xls.parse('Configuracion', skiprows=2).dropna(subset=['Parámetro'])
     config_map = dict(zip(df_config['Parámetro'].astype(str).str.strip(), df_config['Valor']))
@@ -25,11 +24,11 @@ def load_data(filepath):
     tamano_botella = float(config_map['Tamaño de botella (todos los vinos)'])
 
     # =========================================================================
-    # 2. HOJA: Productos (Encabezados en fila 3 -> skiprows=2)
+    # Hoja 2: Productos
     # =========================================================================
     df_prod = xls.parse('Productos', skiprows=2)
     
-    # 2.1 Vinos y Etiquetas admisibles
+    # 2.1 Vinos y Etiquetas
     vinos = []
     etiquetas_por_vino = {}
     for _, row in df_prod.iterrows():
@@ -47,7 +46,7 @@ def load_data(filepath):
     inv_inicial_bo = float(inv_map.get('Pedidos atrasados (backlog) iniciales', 0.0))
 
     # =========================================================================
-    # 3. HOJA: Setups_Costos (Encabezados en fila 3 -> skiprows=2)
+    # Hoja 3: Costos setup
     # =========================================================================
     df_sc = xls.parse('Setups_Costos', skiprows=2)
     
@@ -80,7 +79,7 @@ def load_data(filepath):
     C_bbl = unit_map['pedido atrasado (backorder)']
 
     # =========================================================================
-    # 4. HOJA: Arbol (Encabezados en fila 3 -> skiprows=2)
+    # Hoja 4: Árbol de probabilidades
     # =========================================================================
     df_arbol = xls.parse('Arbol', skiprows=2)
     df_arbol['Nodo_clean'] = pd.to_numeric(df_arbol['Nodo'], errors='coerce')
@@ -101,7 +100,7 @@ def load_data(filepath):
             antecesores[n] = 0
 
     # =========================================================================
-    # 5. HOJA: Demanda (Encabezados en fila 3 -> skiprows=2)
+    # Hoja 5: Demanda
     # =========================================================================
     df_dem = xls.parse('Demanda', skiprows=2).dropna(subset=['Producto (vino, etiqueta)'])
     df_dem = df_dem[df_dem['Producto (vino, etiqueta)'].astype(str).str.contains(r'\(\d+,\s*\d+\)')].copy()

@@ -1,10 +1,10 @@
 def apply_mto_policy(model, vars_dict, data):
-    """
-    Política MTO Realista (Make-to-Forecast):
-    Sin postergación (WIP = 0, y sin usar wb ni wl). 
-    La producción acoplada (w_bl) responde a la demanda estimada (Valor Esperado).
-    """
-    print("Aplicando política MTO Realista estricta (Solo producción acoplada w_bl)...")
+    
+    # Política MTO Realista (Make-to-Order):
+    # Sin postergación (WIP = 0, y sin usar wb ni wl). 
+    # La producción acoplada (w_bl) responde a la demanda estimada (Valor Esperado).
+
+    print("Aplicando política MTO estricta (Solo producción acoplada w_bl)...")
     
     w_b = vars_dict['w_b']
     w_l = vars_dict['w_l']
@@ -47,11 +47,11 @@ def apply_mto_policy(model, vars_dict, data):
     return model
 
 def apply_mts_policy(model, vars_dict, data):
-    """
-    Política Make-to-Stock (MTS):
-    Sin inventario WIP (s_b = 0) y sin operaciones de solo embotellar (wb) 
-    ni solo etiquetar (wl). Todo se produce acoplado (w_bl).
-    """
+    
+    # Política Make-to-Stock (MTS):
+    # Sin inventario WIP (s_b = 0) y sin operaciones de solo embotellar (wb) 
+    # ni solo etiquetar (wl). Todo se produce acoplado (w_bl).
+    
     print("Aplicando restricciones de política MTS estricta (Cero WIP, sin postergación)...")
     
     w_b = vars_dict['w_b']
