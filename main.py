@@ -1,21 +1,14 @@
-import os
 import pandas as pd
 from src.data_loader import load_data
 from src.core_model import build_base_model
 from src.policies import apply_mto_policy, apply_mts_policy
 from src.kpi_calculator import extract_results
 
+
 def main():
-    # 1. Cargar Datos
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(base_dir, "data", "P12 Anexo A Datos.xlsx")
-    
+    # 1. Cargar datos directamente desde src/data_loader.py
     print("Iniciando ejecución del proyecto Capstone...")
-    try:
-        data = load_data(filepath)
-    except Exception as e:
-        print(f"Error crítico al cargar datos: {e}")
-        return
+    data = load_data()
 
     resultados_comparativos = []
 
