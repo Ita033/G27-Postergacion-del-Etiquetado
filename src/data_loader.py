@@ -31,8 +31,6 @@ VOL_BOT = 0.75                   # litros por botella
 Q_TANQ = VOL_TANQ / VOL_BOT      # 13.333,33 botellas por estanque
 
 
-
-
 # =============================================================================
 # 3. TIEMPOS DE PROCESO
 # =============================================================================
@@ -106,7 +104,6 @@ PERIODOS_NODO = {n: ARBOL[n][0] for n in NODOS}
 ESTADOS_DEMANDA = {n: ARBOL[n][1] for n in NODOS}
 ANTECESORES = {n: ARBOL[n][2] for n in NODOS}
 PROB_CONDICIONALES = {n: float(ARBOL[n][3]) for n in NODOS}
-
 
 
 def _calcular_probabilidades_incondicionales():
@@ -208,6 +205,7 @@ RHO = {
     1: 1,
     2: 1,
 }
+
 
 # =============================================================================
 # 10. VALIDACIONES BÁSICAS
