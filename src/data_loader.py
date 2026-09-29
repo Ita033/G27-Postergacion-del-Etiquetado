@@ -31,6 +31,8 @@ VOL_BOT = 0.75                   # litros por botella
 Q_TANQ = VOL_TANQ / VOL_BOT      # 13.333,33 botellas por estanque
 
 
+
+
 # =============================================================================
 # 3. TIEMPOS DE PROCESO
 # =============================================================================
@@ -104,6 +106,7 @@ PERIODOS_NODO = {n: ARBOL[n][0] for n in NODOS}
 ESTADOS_DEMANDA = {n: ARBOL[n][1] for n in NODOS}
 ANTECESORES = {n: ARBOL[n][2] for n in NODOS}
 PROB_CONDICIONALES = {n: float(ARBOL[n][3]) for n in NODOS}
+
 
 
 def _calcular_probabilidades_incondicionales():
@@ -184,6 +187,27 @@ NIVELES_CAPACIDAD = [21.0, 42.0, 63.0, 84.0]
 NIVELES_ETIQUETAS_POSTERGABLES = [0, 2, 3, 4, 5]
 NIVELES_CORRELACION = ["positiva", "negativa"]
 
+
+# =============================================================================
+# 10. CONFIGURACIÓN DE POSTERGACIÓN
+# =============================================================================
+
+# 1 = etiqueta habilitada para postergación
+# 0 = etiqueta no habilitada
+PI = {
+    (1, 1): 1,
+    (1, 2): 1,
+    (1, 3): 1,
+    (2, 1): 1,
+    (2, 2): 1,
+}
+
+# 1 = se permite generar WIP de ese vino
+# 0 = no se permite
+RHO = {
+    1: 1,
+    2: 1,
+}
 
 # =============================================================================
 # 10. VALIDACIONES BÁSICAS
@@ -270,6 +294,9 @@ def load_data(filepath=None):
         'niveles_capacidad': NIVELES_CAPACIDAD.copy(),
         'niveles_etiquetas_postergables': NIVELES_ETIQUETAS_POSTERGABLES.copy(),
         'niveles_correlacion': NIVELES_CORRELACION.copy(),
+        'pi': PI.copy(),
+        'rho': RHO.copy(),
+        
     }
 
     print("=" * 80)

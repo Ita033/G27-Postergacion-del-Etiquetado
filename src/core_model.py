@@ -70,8 +70,10 @@ def build_base_model(data):
         tiempo_b = gp.quicksum(data['t_wb'] * w_b[i, n] + data['t_zb'] * z_b[i, n] for i in vinos)
         tiempo_bl = gp.quicksum(data['t_wbl'] * w_bl[i, j, n] + data['t_zbl'] * z_bl[i, j, n] for i in vinos for j in etiquetas[i])
         tiempo_l = gp.quicksum(data['t_wl'] * w_l[i, j, n] + data['t_zl'] * z_l[i, j, n] for i in vinos for j in etiquetas[i])
+        estanques_intermedios = gp.quicksum(w_b[i,n] for i in vinos) + gp.quicksum(w_bl[i,j,n] for i in vinos for j in etiquetas[i])
         
         m.addConstr(tiempo_b + tiempo_bl + tiempo_l <= data['capacidad_horas'], name=f"capacidad_nodo_{n}")
+        m.addConstr(estanques_intermedios <= data['q_tanque_botellas'] * data['estanques_disp'], name=f"estanques_nodo_{n}")
         
         for i in vinos:
             # Ecuación de Balance WIP (Botellas sin etiquetar)
@@ -79,6 +81,8 @@ def build_base_model(data):
             
             # Lógicas Big-M para embotellado
             m.addConstr(w_b[i, n] <= data['M_wb'] * z_b[i, n], name=f"bigM_b_{i}_{n}")
+            #restricción para analisis
+            #m.addConstr(z_b[i, n] <= data['rho'][i], name=f"postergacion_vino_{i}_{n}")
             
             for j in etiquetas[i]:
                 # Ecuación de Balance Producto Terminado (FG)
@@ -90,7 +94,8 @@ def build_base_model(data):
                 # Lógicas Big-M para etiquetado
                 m.addConstr(w_bl[i, j, n] <= data['M_wbl'] * z_bl[i, j, n], name=f"bigM_bl_{i}_{j}_{n}")
                 m.addConstr(w_l[i, j, n] <= data['M_wl'] * z_l[i, j, n], name=f"bigM_l_{i}_{j}_{n}")
-
+                #restriccion para analisis
+                #m.addConstr(z_l[i, j, n] <= data['pi'][(i, j)], name=f"postergacion_etiqueta_{i}_{j}_{n}")
     # =========================================================================
     # 4. Función Objetivo Estocástica (Minimizar Costo Esperado)
     # =========================================================================
