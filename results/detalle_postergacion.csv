@@ -1,0 +1,289 @@
+﻿Nodo;Producto;Variable;Nivel;Valor
+0;Vino 1;Embotellado sin etiquetar;vino;0
+1;Vino 1;Embotellado sin etiquetar;vino;106552
+2;Vino 1;Embotellado sin etiquetar;vino;111322
+3;Vino 1;Embotellado sin etiquetar;vino;86419
+4;Vino 1;Embotellado sin etiquetar;vino;31198
+5;Vino 1;Embotellado sin etiquetar;vino;0
+6;Vino 1;Embotellado sin etiquetar;vino;0
+7;Vino 1;Embotellado sin etiquetar;vino;0
+8;Vino 1;Embotellado sin etiquetar;vino;0
+9;Vino 1;Embotellado sin etiquetar;vino;0
+10;Vino 1;Embotellado sin etiquetar;vino;0
+11;Vino 1;Embotellado sin etiquetar;vino;0
+0;Vino 2;Embotellado sin etiquetar;vino;0
+1;Vino 2;Embotellado sin etiquetar;vino;77435
+2;Vino 2;Embotellado sin etiquetar;vino;67555
+3;Vino 2;Embotellado sin etiquetar;vino;53054
+4;Vino 2;Embotellado sin etiquetar;vino;0
+5;Vino 2;Embotellado sin etiquetar;vino;0
+6;Vino 2;Embotellado sin etiquetar;vino;0
+7;Vino 2;Embotellado sin etiquetar;vino;0
+8;Vino 2;Embotellado sin etiquetar;vino;0
+9;Vino 2;Embotellado sin etiquetar;vino;0
+10;Vino 2;Embotellado sin etiquetar;vino;0
+11;Vino 2;Embotellado sin etiquetar;vino;0
+0;(1, 1);Acoplado;producto;23525
+1;(1, 1);Acoplado;producto;0
+2;(1, 1);Acoplado;producto;0
+3;(1, 1);Acoplado;producto;0
+4;(1, 1);Acoplado;producto;0
+5;(1, 1);Acoplado;producto;0
+6;(1, 1);Acoplado;producto;0
+7;(1, 1);Acoplado;producto;0
+8;(1, 1);Acoplado;producto;0
+9;(1, 1);Acoplado;producto;0
+10;(1, 1);Acoplado;producto;0
+11;(1, 1);Acoplado;producto;0
+0;(1, 2);Acoplado;producto;24328
+1;(1, 2);Acoplado;producto;0
+2;(1, 2);Acoplado;producto;0
+3;(1, 2);Acoplado;producto;0
+4;(1, 2);Acoplado;producto;0
+5;(1, 2);Acoplado;producto;0
+6;(1, 2);Acoplado;producto;0
+7;(1, 2);Acoplado;producto;0
+8;(1, 2);Acoplado;producto;0
+9;(1, 2);Acoplado;producto;0
+10;(1, 2);Acoplado;producto;0
+11;(1, 2);Acoplado;producto;0
+0;(1, 3);Acoplado;producto;20368
+1;(1, 3);Acoplado;producto;0
+2;(1, 3);Acoplado;producto;0
+3;(1, 3);Acoplado;producto;0
+4;(1, 3);Acoplado;producto;0
+5;(1, 3);Acoplado;producto;0
+6;(1, 3);Acoplado;producto;0
+7;(1, 3);Acoplado;producto;0
+8;(1, 3);Acoplado;producto;0
+9;(1, 3);Acoplado;producto;0
+10;(1, 3);Acoplado;producto;0
+11;(1, 3);Acoplado;producto;0
+0;(2, 1);Acoplado;producto;21080
+1;(2, 1);Acoplado;producto;0
+2;(2, 1);Acoplado;producto;0
+3;(2, 1);Acoplado;producto;0
+4;(2, 1);Acoplado;producto;0
+5;(2, 1);Acoplado;producto;0
+6;(2, 1);Acoplado;producto;0
+7;(2, 1);Acoplado;producto;0
+8;(2, 1);Acoplado;producto;0
+9;(2, 1);Acoplado;producto;0
+10;(2, 1);Acoplado;producto;0
+11;(2, 1);Acoplado;producto;0
+0;(2, 2);Acoplado;producto;22991
+1;(2, 2);Acoplado;producto;0
+2;(2, 2);Acoplado;producto;0
+3;(2, 2);Acoplado;producto;0
+4;(2, 2);Acoplado;producto;0
+5;(2, 2);Acoplado;producto;0
+6;(2, 2);Acoplado;producto;0
+7;(2, 2);Acoplado;producto;0
+8;(2, 2);Acoplado;producto;0
+9;(2, 2);Acoplado;producto;0
+10;(2, 2);Acoplado;producto;0
+11;(2, 2);Acoplado;producto;0
+0;(1, 1);Etiquetado desde WIP;producto;0
+1;(1, 1);Etiquetado desde WIP;producto;0
+2;(1, 1);Etiquetado desde WIP;producto;53218
+3;(1, 1);Etiquetado desde WIP;producto;34328
+4;(1, 1);Etiquetado desde WIP;producto;18118
+5;(1, 1);Etiquetado desde WIP;producto;81856
+6;(1, 1);Etiquetado desde WIP;producto;45302
+7;(1, 1);Etiquetado desde WIP;producto;50426
+8;(1, 1);Etiquetado desde WIP;producto;31482
+9;(1, 1);Etiquetado desde WIP;producto;12538
+10;(1, 1);Etiquetado desde WIP;producto;30856
+11;(1, 1);Etiquetado desde WIP;producto;10426
+0;(1, 2);Etiquetado desde WIP;producto;0
+1;(1, 2);Etiquetado desde WIP;producto;0
+2;(1, 2);Etiquetado desde WIP;producto;15184
+3;(1, 2);Etiquetado desde WIP;producto;28525
+4;(1, 2);Etiquetado desde WIP;producto;45832
+5;(1, 2);Etiquetado desde WIP;producto;24546
+6;(1, 2);Etiquetado desde WIP;producto;31371
+7;(1, 2);Etiquetado desde WIP;producto;23569
+8;(1, 2);Etiquetado desde WIP;producto;40767
+9;(1, 2);Etiquetado desde WIP;producto;57965
+10;(1, 2);Etiquetado desde WIP;producto;20546
+11;(1, 2);Etiquetado desde WIP;producto;45569
+0;(1, 3);Etiquetado desde WIP;producto;0
+1;(1, 3);Etiquetado desde WIP;producto;0
+2;(1, 3);Etiquetado desde WIP;producto;38150
+3;(1, 3);Etiquetado desde WIP;producto;21080
+4;(1, 3);Etiquetado desde WIP;producto;6762
+5;(1, 3);Etiquetado desde WIP;producto;4920
+6;(1, 3);Etiquetado desde WIP;producto;25765
+7;(1, 3);Etiquetado desde WIP;producto;35043
+8;(1, 3);Etiquetado desde WIP;producto;25646
+9;(1, 3);Etiquetado desde WIP;producto;16248
+10;(1, 3);Etiquetado desde WIP;producto;10920
+11;(1, 3);Etiquetado desde WIP;producto;11043
+0;(2, 1);Etiquetado desde WIP;producto;0
+1;(2, 1);Etiquetado desde WIP;producto;0
+2;(2, 1);Etiquetado desde WIP;producto;39387
+3;(2, 1);Etiquetado desde WIP;producto;30368
+4;(2, 1);Etiquetado desde WIP;producto;12646
+5;(2, 1);Etiquetado desde WIP;producto;34115
+6;(2, 1);Etiquetado desde WIP;producto;22773
+7;(2, 1);Etiquetado desde WIP;producto;37045
+8;(2, 1);Etiquetado desde WIP;producto;27831
+9;(2, 1);Etiquetado desde WIP;producto;18616
+10;(2, 1);Etiquetado desde WIP;producto;24115
+11;(2, 1);Etiquetado desde WIP;producto;17045
+0;(2, 2);Etiquetado desde WIP;producto;0
+1;(2, 2);Etiquetado desde WIP;producto;0
+2;(2, 2);Etiquetado desde WIP;producto;38048
+3;(2, 2);Etiquetado desde WIP;producto;27991
+4;(2, 2);Etiquetado desde WIP;producto;14949
+5;(2, 2);Etiquetado desde WIP;producto;33440
+6;(2, 2);Etiquetado desde WIP;producto;22824
+7;(2, 2);Etiquetado desde WIP;producto;35085
+8;(2, 2);Etiquetado desde WIP;producto;25147
+9;(2, 2);Etiquetado desde WIP;producto;15209
+10;(2, 2);Etiquetado desde WIP;producto;23440
+11;(2, 2);Etiquetado desde WIP;producto;15085
+0;Vino 1;Inv. sin etiquetar;vino;0
+1;Vino 1;Inv. sin etiquetar;vino;0
+2;Vino 1;Inv. sin etiquetar;vino;0
+3;Vino 1;Inv. sin etiquetar;vino;22619
+4;Vino 1;Inv. sin etiquetar;vino;35840
+5;Vino 1;Inv. sin etiquetar;vino;0
+6;Vino 1;Inv. sin etiquetar;vino;8884
+7;Vino 1;Inv. sin etiquetar;vino;0
+8;Vino 1;Inv. sin etiquetar;vino;11143
+9;Vino 1;Inv. sin etiquetar;vino;22287
+10;Vino 1;Inv. sin etiquetar;vino;4716
+11;Vino 1;Inv. sin etiquetar;vino;0
+0;Vino 2;Inv. sin etiquetar;vino;0
+1;Vino 2;Inv. sin etiquetar;vino;0
+2;Vino 2;Inv. sin etiquetar;vino;0
+3;Vino 2;Inv. sin etiquetar;vino;19076
+4;Vino 2;Inv. sin etiquetar;vino;49840
+5;Vino 2;Inv. sin etiquetar;vino;0
+6;Vino 2;Inv. sin etiquetar;vino;21958
+7;Vino 2;Inv. sin etiquetar;vino;0
+8;Vino 2;Inv. sin etiquetar;vino;19152
+9;Vino 2;Inv. sin etiquetar;vino;38305
+10;Vino 2;Inv. sin etiquetar;vino;2285
+11;Vino 2;Inv. sin etiquetar;vino;17710
+0;(1, 1);Inv. terminado;producto;0
+1;(1, 1);Inv. terminado;producto;0
+2;(1, 1);Inv. terminado;producto;0
+3;(1, 1);Inv. terminado;producto;0
+4;(1, 1);Inv. terminado;producto;0
+5;(1, 1);Inv. terminado;producto;0
+6;(1, 1);Inv. terminado;producto;0
+7;(1, 1);Inv. terminado;producto;0
+8;(1, 1);Inv. terminado;producto;0
+9;(1, 1);Inv. terminado;producto;0
+10;(1, 1);Inv. terminado;producto;0
+11;(1, 1);Inv. terminado;producto;0
+0;(1, 2);Inv. terminado;producto;0
+1;(1, 2);Inv. terminado;producto;0
+2;(1, 2);Inv. terminado;producto;0
+3;(1, 2);Inv. terminado;producto;0
+4;(1, 2);Inv. terminado;producto;0
+5;(1, 2);Inv. terminado;producto;0
+6;(1, 2);Inv. terminado;producto;0
+7;(1, 2);Inv. terminado;producto;0
+8;(1, 2);Inv. terminado;producto;0
+9;(1, 2);Inv. terminado;producto;0
+10;(1, 2);Inv. terminado;producto;0
+11;(1, 2);Inv. terminado;producto;0
+0;(1, 3);Inv. terminado;producto;0
+1;(1, 3);Inv. terminado;producto;0
+2;(1, 3);Inv. terminado;producto;0
+3;(1, 3);Inv. terminado;producto;0
+4;(1, 3);Inv. terminado;producto;0
+5;(1, 3);Inv. terminado;producto;0
+6;(1, 3);Inv. terminado;producto;0
+7;(1, 3);Inv. terminado;producto;0
+8;(1, 3);Inv. terminado;producto;0
+9;(1, 3);Inv. terminado;producto;0
+10;(1, 3);Inv. terminado;producto;0
+11;(1, 3);Inv. terminado;producto;0
+0;(2, 1);Inv. terminado;producto;0
+1;(2, 1);Inv. terminado;producto;0
+2;(2, 1);Inv. terminado;producto;0
+3;(2, 1);Inv. terminado;producto;0
+4;(2, 1);Inv. terminado;producto;0
+5;(2, 1);Inv. terminado;producto;0
+6;(2, 1);Inv. terminado;producto;0
+7;(2, 1);Inv. terminado;producto;0
+8;(2, 1);Inv. terminado;producto;0
+9;(2, 1);Inv. terminado;producto;0
+10;(2, 1);Inv. terminado;producto;0
+11;(2, 1);Inv. terminado;producto;0
+0;(2, 2);Inv. terminado;producto;0
+1;(2, 2);Inv. terminado;producto;0
+2;(2, 2);Inv. terminado;producto;0
+3;(2, 2);Inv. terminado;producto;0
+4;(2, 2);Inv. terminado;producto;0
+5;(2, 2);Inv. terminado;producto;0
+6;(2, 2);Inv. terminado;producto;0
+7;(2, 2);Inv. terminado;producto;0
+8;(2, 2);Inv. terminado;producto;0
+9;(2, 2);Inv. terminado;producto;0
+10;(2, 2);Inv. terminado;producto;0
+11;(2, 2);Inv. terminado;producto;0
+0;(1, 1);Backorder;producto;0
+1;(1, 1);Backorder;producto;0
+2;(1, 1);Backorder;producto;0
+3;(1, 1);Backorder;producto;0
+4;(1, 1);Backorder;producto;0
+5;(1, 1);Backorder;producto;0
+6;(1, 1);Backorder;producto;0
+7;(1, 1);Backorder;producto;0
+8;(1, 1);Backorder;producto;0
+9;(1, 1);Backorder;producto;0
+10;(1, 1);Backorder;producto;0
+11;(1, 1);Backorder;producto;0
+0;(1, 2);Backorder;producto;0
+1;(1, 2);Backorder;producto;0
+2;(1, 2);Backorder;producto;0
+3;(1, 2);Backorder;producto;0
+4;(1, 2);Backorder;producto;0
+5;(1, 2);Backorder;producto;0
+6;(1, 2);Backorder;producto;0
+7;(1, 2);Backorder;producto;0
+8;(1, 2);Backorder;producto;0
+9;(1, 2);Backorder;producto;0
+10;(1, 2);Backorder;producto;0
+11;(1, 2);Backorder;producto;0
+0;(1, 3);Backorder;producto;0
+1;(1, 3);Backorder;producto;0
+2;(1, 3);Backorder;producto;0
+3;(1, 3);Backorder;producto;0
+4;(1, 3);Backorder;producto;0
+5;(1, 3);Backorder;producto;0
+6;(1, 3);Backorder;producto;0
+7;(1, 3);Backorder;producto;0
+8;(1, 3);Backorder;producto;0
+9;(1, 3);Backorder;producto;0
+10;(1, 3);Backorder;producto;0
+11;(1, 3);Backorder;producto;0
+0;(2, 1);Backorder;producto;0
+1;(2, 1);Backorder;producto;0
+2;(2, 1);Backorder;producto;0
+3;(2, 1);Backorder;producto;0
+4;(2, 1);Backorder;producto;0
+5;(2, 1);Backorder;producto;0
+6;(2, 1);Backorder;producto;0
+7;(2, 1);Backorder;producto;0
+8;(2, 1);Backorder;producto;0
+9;(2, 1);Backorder;producto;0
+10;(2, 1);Backorder;producto;0
+11;(2, 1);Backorder;producto;0
+0;(2, 2);Backorder;producto;0
+1;(2, 2);Backorder;producto;0
+2;(2, 2);Backorder;producto;0
+3;(2, 2);Backorder;producto;0
+4;(2, 2);Backorder;producto;0
+5;(2, 2);Backorder;producto;0
+6;(2, 2);Backorder;producto;0
+7;(2, 2);Backorder;producto;0
+8;(2, 2);Backorder;producto;0
+9;(2, 2);Backorder;producto;0
+10;(2, 2);Backorder;producto;0
+11;(2, 2);Backorder;producto;0
