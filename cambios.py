@@ -7,6 +7,7 @@ from src.policies import apply_mto_policy, apply_mts_policy
 import copy 
 import numpy as np
 from itertools import combinations
+import gurobipy as gp
 
 os.makedirs("results", exist_ok=True)
 pd.options.display.float_format = "{:,.2f}".format
@@ -314,12 +315,222 @@ def parte5(data):
 
     pd.options.display.float_format = "{:,.2f}".format
     guardar(df, "parte5_postergacion_limitada")
+
+
+# =====================================================================
+# PARTE 6: Impacto de la capacidad de la línea
+# =====================================================================
+def parte6(data):
+    titulo("PARTE 6: IMPACTO DE LA CAPACIDAD DE LA LÍNEA")
+    politicas = {"Postergación": None, "MTO": apply_mto_policy, "MTS": apply_mts_policy}
+    capacidades = [84, 77, 70, 63, 56, 49, 42, 35, 28, 21]
+
+    filas = []
+    for horas in capacidades:
+        d = copy.deepcopy(data)
+        d["capacidad_horas"] = horas
+        fila = {"Horas": horas}
+        for nombre, pol in politicas.items():
+            model, vars_ = resolver(d, pol)
+            if model:
+                fila[f"Costo {nombre}"] = model.ObjVal
+                fila[f"Backorders {nombre}"] = suma_esperada(vars_, "b_bl")
+            else:
+                fila[f"Costo {nombre}"] = None
+                fila[f"Backorders {nombre}"] = None
+        filas.append(fila)
+        print(f"  {horas} h resuelto")
+
+    df = pd.DataFrame(filas)
+    for otra in ["MTS", "MTO"]:
+        df[f"Ahorro vs {otra} ($)"] = df[f"Costo {otra}"] - df["Costo Postergación"]
+        df[f"Ahorro vs {otra} (%)"] = 100 * df[f"Ahorro vs {otra} ($)"] / df[f"Costo {otra}"]
+
+    pd.options.display.float_format = "{:,.0f}".format
+    print("\n--- Costo esperado por política ($) ---")
+    print(df[["Horas"] + [f"Costo {p}" for p in politicas]].to_string(index=False))
+    print("\n--- Backorders esperados (botellas) ---")
+    print(df[["Horas"] + [f"Backorders {p}" for p in politicas]].to_string(index=False))
+    print("\n--- Ahorro de la postergación ---")
+    print(df[["Horas", "Ahorro vs MTS ($)", "Ahorro vs MTS (%)",
+              "Ahorro vs MTO ($)", "Ahorro vs MTO (%)"]].to_string(index=False))
+    pd.options.display.float_format = "{:,.2f}".format
+
+    guardar(df, "parte6_capacidad")
+
+    # Gráfico (escala logarítmica porque los costos van de miles a miles de millones)
+    try:
+        import matplotlib.pyplot as plt
+        g = df.sort_values("Horas")
+        ax = g.plot(x="Horas", y=[f"Costo {p}" for p in politicas],
+                    logy=True, marker="o", figsize=(8, 5))
+        ax.set_xlabel("Capacidad de la línea por período (horas)")
+        ax.set_ylabel("Costo esperado ($, escala logarítmica)")
+        ax.set_title("Costo esperado según capacidad de la línea")
+        ax.grid(True, which="both", alpha=0.3)
+        plt.savefig("results/parte6_capacidad.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print("(Gráfico guardado en results/parte6_capacidad.png)")
+    except ImportError:
+        print("(matplotlib no está instalado; se omite el gráfico. "
+              "Se instala con: pip install matplotlib)")
+
+
+# =====================================================================
+# PARTE 7: Costo y capacidad de inventario
+# =====================================================================
+def buscar_clave(data, valor):
+    """Busca qué clave de 'data' tiene ese valor (ej: el costo 10)."""
+    claves = [k for k, v in data.items()
+              if isinstance(v, (int, float)) and not isinstance(v, bool) and v == valor]
+    if len(claves) != 1:
+        raise ValueError(f"Para el valor {valor} encontré estas claves: {claves}. "
+                         "Revisa data_loader.py para ver el nombre correcto.")
+    return claves[0]
+
+
+def pct_global(vars_):
+    """% del total atendido etiquetando desde WIP (todos los productos)."""
+    wl = sum(PROB[n] * vars_["w_l"][(*p, n)].X for p in DEMANDA for n in range(2, 12))
+    wbl = sum(PROB[n] * vars_["w_bl"][(*p, n)].X for p in DEMANDA for n in range(1, 12))
+    return 100 * wl / (wl + wbl) if wl + wbl > 0 else 0
+
+
+def limitar_bodega_wip(model, vars_, cap):
+    """Restricción nueva: botellas sin etiquetar guardadas + recién embotelladas <= cap."""
+    vinos = {k[0] for k in vars_["s_b"]}
+    nodos = {k[-1] for k in vars_["s_b"] if k[-1] >= 1}
+    for n in nodos:
+        model.addConstr(gp.quicksum(vars_["s_b"][(i, n)] + vars_["w_b"][(i, n)]
+                                    for i in vinos) <= cap, name=f"bodega_wip_{n}")
+    model.update()
+    return model
+
+
+def parte7(data):
+    titulo("PARTE 7: COSTO Y CAPACIDAD DE INVENTARIO")
+    clave_wip = buscar_clave(data, 10)
+    clave_pt = buscar_clave(data, 15)
+    print(f"(Claves: costo WIP = '{clave_wip}', costo terminado = '{clave_pt}')")
+    pd.options.display.float_format = "{:,.0f}".format
+
+    # ----------  costo de inventario ----------
+    barridos = {
+        "Costo WIP": (clave_wip, [5, 10, 15, 20, 30, 50]),
+        "Costo terminado": (clave_pt, [10, 15, 25, 40]),
+    }
+    for etiqueta, (clave, valores) in barridos.items():
+        filas = []
+        for valor in valores:
+            d = copy.deepcopy(data)
+            d[clave] = valor
+            m_p, v_p = resolver(d)
+            m_s, _ = resolver(d, apply_mts_policy)
+            filas.append({
+                etiqueta: valor,
+                "Costo Postergación": m_p.ObjVal,
+                "Costo MTS": m_s.ObjVal,
+                "Ahorro vs MTS (%)": 100 * (m_s.ObjVal - m_p.ObjVal) / m_s.ObjVal,
+              "% postergado": pct_global(v_p),
+                "Inv. sin etiquetar esperado": suma_esperada(v_p, "s_b"),
+                "Inv. terminado esperado": suma_esperada(v_p, "s_bl"),
+            })            
+        df = pd.DataFrame(filas)
+        print(f"\n--- 7a: variando el {etiqueta.lower()} ($/botella·período) ---")
+        print(df.to_string(index=False))
+        guardar(df, f"parte7a_{etiqueta.lower().replace(' ', '_')}")
+
+    # ----------  capacidad de bodega WIP ----------
+    m_mts, _ = resolver(data, apply_mts_policy)
+    filas = []
+    for cap in [None, 180000, 150000, 120000, 90000, 60000, 30000, 0]:
+        if cap is None:
+            model, vars_ = resolver(data)
+        else:
+            model, vars_ = resolver(data, lambda m, v, dd, c=cap: limitar_bodega_wip(m, v, c))
+        filas.append({
+            "Capacidad bodega WIP": "Sin límite" if cap is None else f"{cap:,}",
+            "Costo Postergación": model.ObjVal,
+            "Ahorro vs MTS (%)": 100 * (m_mts.ObjVal - model.ObjVal) / m_mts.ObjVal,
+            "% postergado": pct_global(vars_),
+            "Backorders esperados": suma_esperada(vars_, "b_bl"),
+        })
+    df = pd.DataFrame(filas)
+    print(f"\n--- 7b: capacidad de bodega para botellas sin etiquetar "
+          f"(costo MTS = {m_mts.ObjVal:,.0f}) ---")
+    print(df.to_string(index=False))
+    guardar(df, "parte7b_capacidad_bodega")
+
+    pd.options.display.float_format = "{:,.2f}".format
+
+# =====================================================================
+# TIEMPOS: variables continuas vs enteras
+# =====================================================================
+VARS_CANTIDAD = ["w_b", "w_bl", "w_l", "s_b", "s_bl", "b_bl"]
+
+
+def resolver_con_tiempo(data, politica, enteras, repeticiones=3):
+    tiempos = []
+    for _ in range(repeticiones):
+        model, vars_ = build_base_model(data)
+        if politica:
+            model = politica(model, vars_, data)
+        if enteras:
+            for nombre in VARS_CANTIDAD:
+                for var in vars_[nombre].values():
+                    var.VType = GRB.INTEGER
+            model.update()
+        model.Params.OutputFlag = 0
+        model.Params.TimeLimit = 120
+        model.optimize()
+        tiempos.append(model.Runtime)
+    estado = {GRB.OPTIMAL: "Óptimo", GRB.TIME_LIMIT: "Límite de tiempo"}.get(
+        model.Status, str(model.Status))
+    return {
+        "Tiempo prom. (s)": sum(tiempos) / len(tiempos),
+        "Costo": model.ObjVal if model.SolCount > 0 else None,
+        "Gap (%)": 100 * model.MIPGap if model.SolCount > 0 else None,
+        "Var. enteras/binarias": model.NumIntVars,
+        "Estado": estado,
+    }
+
+
+def parte_tiempos(data):
+    titulo("TIEMPOS DE RESOLUCIÓN: CONTINUAS VS ENTERAS")
+    politicas = {"Postergación": None, "MTO": apply_mto_policy, "MTS": apply_mts_policy}
+    filas = []
+    for horas in [84, 63, 42, 21]:
+        d = copy.deepcopy(data)
+        d["capacidad_horas"] = horas
+        for nombre, pol in politicas.items():
+            for enteras in [False, True]:
+                res = resolver_con_tiempo(d, pol, enteras)
+                filas.append({"Horas": horas, "Política": nombre,
+                              "Variables": "Enteras" if enteras else "Continuas", **res})
+        print(f"  {horas} h listo")
+
+    df = pd.DataFrame(filas)
+    pd.options.display.float_format = "{:,.4f}".format
+    print("\n--- Detalle ---")
+    print(df.to_string(index=False))
+
+    comp = df.pivot_table(index=["Horas", "Política"], columns="Variables",
+                          values=["Tiempo prom. (s)", "Costo"])
+    comp[("Veces más lento", "")] = (comp[("Tiempo prom. (s)", "Enteras")]
+                                     / comp[("Tiempo prom. (s)", "Continuas")])
+    comp[("Dif. costo (%)", "")] = 100 * (comp[("Costo", "Enteras")]
+                                         - comp[("Costo", "Continuas")]) / comp[("Costo", "Continuas")]
+    print("\n--- Comparación ---")
+    print(comp.to_string())
+    pd.options.display.float_format = "{:,.2f}".format
+
+    guardar(df, "tiempos_continuas_vs_enteras")
     
 # =====================================================================
 # ELEGIR QUÉ PARTES CORRER
 # =====================================================================
 if __name__ == "__main__":
     data = load_data()
-    PARTES = [parte5]          # para correr todo: [parte1, parte2, ...]
+    PARTES = [parte_tiempos]          # para correr todo: [parte1, parte2, ...]
     for parte in PARTES:
         parte(data)

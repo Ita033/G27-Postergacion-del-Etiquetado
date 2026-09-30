@@ -1,0 +1,25 @@
+﻿Horas;Política;Variables;Tiempo prom. (s);Costo;Gap (%);Var. enteras/binarias;Estado
+84;Postergación;Continuas;0,04;617164,27;0,01;132;Óptimo
+84;Postergación;Enteras;0,04;617164,27;0,0;420;Óptimo
+84;MTO;Continuas;0,0;1861097600,0;0,0;132;Óptimo
+84;MTO;Enteras;0,01;1861097600,0;0,0;420;Óptimo
+84;MTS;Continuas;0,01;1918302,4;0,0;132;Óptimo
+84;MTS;Enteras;0,01;1918302,4;0,0;420;Óptimo
+63;Postergación;Continuas;0,04;623914,27;0,0;132;Óptimo
+63;Postergación;Enteras;0,04;623914,27;0,0;420;Óptimo
+63;MTO;Continuas;0,01;2010144221,43;0,0;132;Óptimo
+63;MTO;Enteras;0,01;2010146150,0;0,0;420;Óptimo
+63;MTS;Continuas;0,01;75565205,97;0,0;132;Óptimo
+63;MTS;Enteras;0,01;75566487,4;0,0;420;Óptimo
+42;Postergación;Continuas;0,25;372623992,07;0,0;132;Óptimo
+42;Postergación;Enteras;1,4;372631313,87;0,0;420;Óptimo
+42;MTO;Continuas;0,02;2516985457,14;0,0;132;Óptimo
+42;MTO;Enteras;0,02;2516990600,0;0,0;420;Óptimo
+42;MTS;Continuas;0,04;1240132205,02;0,0;132;Óptimo
+42;MTS;Enteras;0,06;1240142913,95;0,0;420;Óptimo
+21;Postergación;Continuas;0,95;3123594643,05;0,01;132;Óptimo
+21;Postergación;Enteras;120,01;3123621163,8;0,06;420;Límite de tiempo
+21;MTO;Continuas;0,14;3796336935,71;0,0;132;Óptimo
+21;MTO;Enteras;0,47;3796361150,0;0,0;420;Óptimo
+21;MTS;Continuas;0,2;3628334016,03;0,0;132;Óptimo
+21;MTS;Enteras;0,59;3628358499,95;0,0;420;Óptimo
