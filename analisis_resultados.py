@@ -1,22 +1,22 @@
 """
 analisis_resultados.py
 
-Análisis de sensibilidad del modelo. Ver la sección "Análisis de sensibilidad" del README.
+Análisis de resultados del modelo. Ver la sección "Análisis de resultados" del README.
 
-Resuelve el modelo base (core_model.py) muchas veces cambiando un parámetro a la vez
-(capacidad, costos de inventario, qué etiquetas se pueden postergar, variabilidad de la
-demanda, etc.) y guarda una tabla CSV por experimento. No cambia la formulación ni los
-datos originales: cada experimento trabaja sobre una copia de `data`.
+Resuelve el modelo base (core_model.py) y las políticas, y guarda tablas CSV con el detalle
+de los resultados que se usan en la presentación de la entrega 2. No cambia la formulación
+ni los datos originales: cada experimento trabaja sobre una copia de `data`.
 
 El análisis está dividido en bloques que se pueden correr por separado:
-  base       -> compara las políticas, costo por camino y detalle por nodo y período
+  base       -> compara las políticas, costo por camino, estadísticas de la demanda (CV y
+                correlaciones) y detalle por nodo y período
   capacidad  -> las políticas con 21, 42, 63 y 84 horas por período
-  seleccion  -> qué etiquetas (o vinos) conviene dejar postergables
-  inventario -> costos de inventario y un límite de bodega
-  factorial  -> variabilidad (CV) x correlación de la demanda x capacidad
+
+La versión completa (selección de etiquetas, costos de inventario, límite de bodega y diseño
+factorial de variabilidad x correlación) quedó respaldada en la rama `respaldo-analisis-completo`.
 
 Se corre desde la raíz del repo:
-  python analisis_resultados.py                                   (todos los bloques, ~1 minuto)
+  python analisis_resultados.py                                   (los dos bloques, unos segundos)
   python analisis_resultados.py --bloques base capacidad
   python analisis_resultados.py --salida otra/carpeta --limite-segundos 120
 """
@@ -26,7 +26,7 @@ import json
 import copy
 import argparse
 import contextlib
-from itertools import combinations, product
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -141,196 +141,13 @@ def estadisticas_demanda(data):
     return filas, correlaciones
 
 
-# Puntaje de cada estado del árbol: entre hermanos, "Alta" va sobre la media y "Baja" bajo la media
-PUNTAJE_ESTADO = {"Alta": 1, "Media": 0, "Baja": -1}
-
-
-def hijos(data, n):
-    """Nodos que cuelgan directamente de n."""
-    return [h for h in data['nodos'] if data['antecesores'][h] == n]
-
-
-def estandarizar(x, q):
-    """x con media 0 y varianza 1, ponderando por q (q suma 1)."""
-    x = np.asarray(x, dtype=float)
-    x = x - q @ x
-    sd = np.sqrt(q @ x**2)
-    if sd < 1e-12:
-        raise ValueError("No se puede estandarizar un vector sin variabilidad")
-    return x / sd
-
-
-def factores_rama(data, hs, q):
-    """
-    Factores a y b sobre los hijos `hs` de un nodo: media 0, varianza 1 y sin correlación entre
-    ellos (ponderando por la probabilidad condicional q).
-      a: sigue los estados del árbol (Alta > Media > Baja)
-      b: contrasta "Media" contra los extremos. Solo existe con 3 o más hijos: con 2 hijos los
-         vectores de media 0 son todos múltiplos de a, así que b = None.
-    """
-    puntaje = np.array([PUNTAJE_ESTADO[data['estados_demanda'][h]] for h in hs], dtype=float)
-    a = estandarizar(puntaje, q)
-    if len(hs) < 3:
-        return a, None
-    b = puntaje**2
-    b = b - q @ b
-    b = b - (q @ (a * b)) * a  # se le quita la parte que se parece a a (Gram-Schmidt)
-    return a, estandarizar(b, q)
-
-
-def demanda_transformada(base, cv, correlacion="original"):
-    """
-    Copia de `base` con demandas nuevas para el diseño factorial, generadas RAMA POR RAMA.
-
-    El modelo decide parado en un nodo mirando a sus hijos, así que lo que hay que controlar es
-    la demanda de los hijos de cada nodo (no la de todo el período mezclado). Para cada nodo n
-    y cada producto, la demanda de cada hijo h de n es:
-        demanda_h = m * (1 + cv * z_h)
-      - m: media de los hijos de n en el Anexo A (media condicional). Así se mantiene la relación
-           entre períodos (después de "Alta" siguen demandas altas) y también la media de cada período.
-      - z: media 0 y varianza 1 entre los hijos de n, ponderando por la probabilidad condicional.
-           Así el CV de los hijos de n es exactamente cv.
-
-    Según `correlacion`, z sale de:
-      original -> las desviaciones del Anexo entre los hijos de n (se mantienen sus correlaciones)
-      positiva -> el factor a para todas las etiquetas: suben y bajan juntas (correlación +1)
-      negativa -> con 3 hijos, las etiquetas de un vino se reparten en ángulos iguales entre a y b:
-                  correlación -1/(m-1) (m = n° de etiquetas), la más negativa posible para todas
-                  por igual (-0,5 en el vino 1 y -1 en el vino 2).
-                  Con 2 hijos solo se puede llegar a ±1: la primera etiqueta sigue a y las demás van
-                  al revés. En el vino 1, (1,1) queda en -1 con (1,2) y (1,3), pero (1,2) y (1,3)
-                  quedan en +1 entre ellas. Es una limitación del árbol (N2 y N4 tienen 2 hijos).
-    En positiva y negativa la primera etiqueta de cada vino sigue los estados del árbol, así que
-    entre vinos la correlación queda en +1 (en el Anexo es 0,97).
-    """
-    d = copy.deepcopy(base)
-    for n in base['nodos']:
-        hs = hijos(base, n)
-        if not hs:
-            continue
-        q = np.array([base['probabilidades'][h] for h in hs])
-        q = q / q.sum()  # probabilidades condicionales a estar en n
-        a, b = factores_rama(base, hs, q)
-
-        for i in base['vinos']:
-            etiquetas = base['etiquetas_por_vino'][i]
-            if correlacion == "negativa" and len(etiquetas) not in (2, 3):
-                raise ValueError("El generador negativo admite 2 o 3 etiquetas por vino")
-            for k, j in enumerate(etiquetas):
-                x = np.array([base['demandas'][i, j, h] for h in hs])
-                media = q @ x
-                if correlacion == "original":
-                    z = estandarizar(x, q)
-                elif correlacion == "positiva":
-                    z = a
-                elif correlacion == "negativa":
-                    if b is not None:
-                        # Las etiquetas quedan repartidas en ángulos iguales, así se compensan
-                        theta = 2 * np.pi * k / len(etiquetas)
-                        z = np.cos(theta) * a + np.sin(theta) * b
-                    else:
-                        z = a if k == 0 else -a
-                else:
-                    raise ValueError(correlacion)
-                valores = media * (1 + cv * z)
-                if np.min(valores) < 0:
-                    raise ValueError("El CV produce demanda negativa; no se trunca silenciosamente")
-                for h, valor in zip(hs, valores):
-                    d['demandas'][i, j, h] = float(valor)
-
-    validar_datos(d)
-    # Chequeo: el CV de los hijos de cada nodo tiene que ser exactamente el pedido
-    for r in estadisticas_condicionales(d)[0]:
-        if r['etiqueta'] != "TOTAL" and not np.isclose(r['cv'], cv):
-            raise AssertionError(f"CV condicional {r['cv']:.4f} distinto de {cv} desde N{r['nodo_padre']}")
-    return d
-
-
-def estadisticas_condicionales(data):
-    """
-    Igual que estadisticas_demanda, pero mirando los hijos de cada nodo (lo que controla
-    demanda_transformada): media, sd y CV de cada etiqueta (y del total del vino) y la
-    correlación entre cada par de etiquetas del mismo vino, condicionales a estar en el nodo padre.
-    """
-    filas, correlaciones = [], []
-    for n in data['nodos']:
-        hs = hijos(data, n)
-        if not hs:
-            continue
-        p = np.array([data['probabilidades'][h] for h in hs])
-        base_fila = dict(nodo_padre=n, periodo=data['periodos_nodo'][hs[0]], n_hijos=len(hs))
-        for i in data['vinos']:
-            etiquetas = data['etiquetas_por_vino'][i]
-            xs = {j: np.array([data['demandas'][i, j, h] for h in hs]) for j in etiquetas}
-            for j, x in list(xs.items()) + [("TOTAL", sum(xs.values()))]:
-                media, sd, cv = momentos(x, p)
-                filas.append(dict(base_fila, vino=i, etiqueta=j, media=media, sd=sd, cv=cv))
-            for a, b in combinations(etiquetas, 2):
-                ma, sa, _ = momentos(xs[a], p)
-                mb, sb, _ = momentos(xs[b], p)
-                cov = float((p / p.sum()) @ ((xs[a] - ma) * (xs[b] - mb)))
-                correlaciones.append(dict(base_fila, vino=i, etiqueta_a=a, etiqueta_b=b, covarianza=cov,
-                                          correlacion=cov / (sa * sb) if sa * sb > 1e-12 else np.nan))
-    return filas, correlaciones
-
-
-# -----------------------------------------------------------------------------
-# Selección de etiquetas postergables
-# -----------------------------------------------------------------------------
-def subconjuntos_validos(data):
-    """
-    Combinaciones de etiquetas que se pueden postergar. De cada vino se posterga ninguna
-    o al menos dos etiquetas (a diferencia de combinaciones_32.py, acá no se prueba postergar
-    una sola etiqueta de un vino). Las combinaciones de cada vino se cruzan entre sí.
-    """
-    opciones = []
-    for i in data['vinos']:
-        ps = [(i, j) for j in data['etiquetas_por_vino'][i]]
-        opciones.append([()] + [c for k in range(2, len(ps) + 1) for c in combinations(ps, k)])
-    return [tuple(p for grupo in grupos for p in grupo) for grupos in product(*opciones)]
-
-
-def mejor_subconjunto(candidatos):
-    """La combinación más barata. Si hay empate (diferencia de $0,01 o menos), la que posterga menos etiquetas."""
-    minimo = min(r['costo'] for r in candidatos)
-    empates = [r for r in candidatos if r['costo'] <= minimo + .01]
-    ganador = min(empates, key=lambda r: (r['n_etiquetas'], r['permitidas']))
-    return dict(ganador, selecciones_equivalentes=" | ".join(r['permitidas'] for r in empates))
-
-
 # -----------------------------------------------------------------------------
 # Modelo
 # -----------------------------------------------------------------------------
-def restricciones_bodega(model, v, data, capacidad, alcance):
+def resolver(data, politica="Postergación", limite_tiempo=60):
     """
-    Límite de bodega (en botellas). Ojo: NO es una restricción del Anexo A, es una extensión
-    nuestra para el análisis. Se revisa en dos momentos de cada nodo: al inicio (lo que quedó
-    del nodo anterior más lo que llega embotellado) y al cierre (lo que queda más lo que se
-    embotelló, aunque recién se use en el período siguiente).
-      alcance = "wip"   -> solo botellas sin etiquetar
-      alcance = "total" -> sin etiquetar + terminadas
-    capacidad = None no agrega nada.
-    """
-    if capacidad is None:
-        return
-    for n in data['nodos']:
-        ant = data['antecesores'][n]
-        inicio = gp.quicksum(v['s_b'][i, ant] + v['w_b'][i, ant] for i in data['vinos'])
-        cierre = gp.quicksum(v['s_b'][i, n] + v['w_b'][i, n] for i in data['vinos'])
-        if alcance == "total":
-            inicio += gp.quicksum(v['s_bl'][i, j, ant] + v['w_bl'][i, j, ant] for i, j in productos(data))
-            cierre += gp.quicksum(v['s_bl'][i, j, n] + v['w_bl'][i, j, n] for i, j in productos(data))
-        model.addConstr(inicio <= capacidad, name=f"bodega_inicio_{n}")
-        model.addConstr(cierre <= capacidad, name=f"bodega_cierre_{n}")
-
-
-def resolver(data, politica="Postergación", permitidas=None, bodega=None, alcance="wip", limite_tiempo=60):
-    """
-    Arma el modelo base, le aplica la política y las restricciones del experimento, lo
-    resuelve y devuelve un diccionario con el estado, el costo, los KPIs y los valores
-    de las variables.
-      permitidas: productos (vino, etiqueta) que se pueden postergar (None = todos)
-      bodega, alcance: límite de bodega (ver restricciones_bodega)
+    Arma el modelo base, le aplica la política, lo resuelve y devuelve un diccionario con
+    el estado, el costo, los KPIs y los valores de las variables.
     """
     validar_datos(data)
     d = copy.deepcopy(data)
@@ -345,30 +162,12 @@ def resolver(data, politica="Postergación", permitidas=None, bodega=None, alcan
             POLITICAS[politica](model, v, d)
 
     try:
-        if permitidas is not None:
-            permitidas = set(permitidas)
-            if not permitidas <= set(productos(d)):
-                raise ValueError("Etiquetas no existentes")
-            # Los productos no permitidos no se pueden etiquetar desde el WIP
-            for (i, j, n), var in v['w_l'].items():
-                if (i, j) not in permitidas:
-                    var.UB = 0
-                    if n:  # z_l no existe en el nodo 0
-                        v['z_l'][i, j, n].UB = 0
-            # Si no se posterga ninguna etiqueta de un vino, tampoco se embotella sin etiqueta
-            for i in d['vinos']:
-                if not any(p[0] == i for p in permitidas):
-                    for n in d['nodos']:
-                        v['w_b'][i, n].UB = v['z_b'][i, n].UB = 0
-
         # Lo embotellado en las hojas llegaría después del horizonte, así que no se permite
         for n in hojas(d):
             for i in d['vinos']:
                 v['w_b'][i, n].UB = v['z_b'][i, n].UB = 0
             for i, j in productos(d):
                 v['w_bl'][i, j, n].UB = v['z_bl'][i, j, n].UB = 0
-
-        restricciones_bodega(model, v, d, bodega, alcance)
 
         model.Params.TimeLimit = limite_tiempo
         model.Params.MIPGap = MIP_GAP
@@ -588,40 +387,6 @@ class Analisis:
                                         **{k: float((grupo[k] * grupo.probabilidad).sum()) for k in columnas}))
             self.guardar("04_periodos", por_periodo)
 
-    def bloque_seleccion(self, d):
-        filas, mejores, por_vino = [], [], []
-        subconjuntos = subconjuntos_validos(d)
-        for horas in d['niveles_capacidad']:
-            dd = copy.deepcopy(d)
-            dd['capacidad_horas'] = horas
-
-            # Todas las combinaciones válidas de etiquetas postergables
-            local = []
-            for permitidas in subconjuntos:
-                r = self.correr(dd, permitidas=permitidas)
-                local.append(dict(horas=horas, n_etiquetas=len(permitidas), permitidas=str(permitidas),
-                                  **sin_valores(r)))
-            filas.extend(local)
-
-            # La mejor combinación si se pueden postergar como máximo k etiquetas (niveles del Anexo A)
-            for limite in d['niveles_etiquetas_postergables']:
-                factibles = [r for r in local if r['n_etiquetas'] <= limite and r['solucion']]
-                if factibles:
-                    ganador = mejor_subconjunto(factibles)
-                    certificada = all(r['optimo'] for r in local if r['n_etiquetas'] <= limite)
-                    mejores.append(dict(limite_etiquetas=limite, seleccion_certificada=certificada, **ganador))
-
-            # Postergar por vino completo: ninguno, solo el 1, solo el 2 o ambos
-            for cantidad in range(len(d['vinos']) + 1):
-                for elegidos in combinations(d['vinos'], cantidad):
-                    permitidas = tuple(p for p in productos(d) if p[0] in elegidos)
-                    r = self.correr(dd, permitidas=permitidas)
-                    por_vino.append(dict(horas=horas, n_vinos=cantidad, vinos=str(elegidos), **sin_valores(r)))
-
-        self.guardar("05_subconjuntos", filas)
-        self.guardar("05_mejores_hasta_k_etiquetas", mejores)
-        self.guardar("05_limite_vinos", por_vino)
-
     def bloque_capacidad(self, d):
         filas = []
         for horas in d['niveles_capacidad']:
@@ -629,67 +394,6 @@ class Analisis:
             dd['capacidad_horas'] = horas
             filas.extend(self.comparar_politicas(dd, dict(horas=horas)))
         self.guardar("06_capacidad", filas)
-
-    def bloque_inventario(self, d):
-        # 1) Costo unitario de inventario sin etiquetar (C_sb) y terminado (C_sbl)
-        filas = []
-        for param, valores in {"C_sb": [5, 10, 15, 20, 30, 50], "C_sbl": [10, 15, 25, 40]}.items():
-            for valor in valores:
-                dd = copy.deepcopy(d)
-                dd[param] = valor
-                filas.extend(self.comparar_politicas(dd, dict(parametro=param, valor=valor)))
-
-        # 2) Límite de bodega (None = sin límite). Con bodega total de 90.000 o menos no hay
-        #    solución, porque la producción predefinida del nodo 1 ya es mayor.
-        filas_bodega = []
-        for alcance in ("wip", "total"):
-            for capacidad in (None, 300000, 180000, 150000, 120000, 90000, 60000, 30000, 0):
-                for politica in POLITICAS:
-                    r = self.correr(d, politica, bodega=capacidad, alcance=alcance)
-                    filas_bodega.append(dict(alcance=alcance, capacidad_bot=capacidad, sin_limite=capacidad is None,
-                                             **sin_valores(r)))
-
-        self.guardar("07_costos_inventario", filas)
-        self.guardar("07_capacidad_bodega", filas_bodega)
-
-    def bloque_factorial(self, d):
-        filas, seleccion, validacion, correlaciones, demandas, subconjuntos = [], [], [], [], [], []
-        for cv, correlacion in product(d['niveles_variabilidad'], ("original", "positiva", "negativa")):
-            dd = demanda_transformada(d, cv, correlacion)
-            meta = dict(cv_objetivo=cv, entorno=correlacion)
-
-            # Para revisar que la demanda generada tenga el CV y la correlación pedidos (en cada rama)
-            estadisticas, corrs = estadisticas_condicionales(dd)
-            validacion.extend(dict(meta, **r) for r in estadisticas)
-            correlaciones.extend(dict(meta, **r) for r in corrs)
-            demandas.extend(dict(meta, vino=i, etiqueta=j, nodo=n, demanda=x)
-                            for (i, j, n), x in dd['demandas'].items())
-
-            for horas in d['niveles_capacidad']:
-                dd['capacidad_horas'] = horas
-                filas.extend(self.comparar_politicas(dd, dict(meta, horas=horas)))
-
-                # Igual que en bloque_seleccion, pero con la demanda generada
-                local = []
-                for permitidas in subconjuntos_validos(dd):
-                    r = self.correr(dd, permitidas=permitidas)
-                    local.append(dict(n_etiquetas=len(permitidas), permitidas=str(permitidas), **sin_valores(r)))
-                subconjuntos.extend(dict(meta, horas=horas, **r) for r in local)
-                for limite in d['niveles_etiquetas_postergables']:
-                    candidatos = [r for r in local if r['n_etiquetas'] <= limite and r['solucion']]
-                    if candidatos:
-                        ganador = mejor_subconjunto(candidatos)
-                        certificada = all(r['optimo'] for r in local if r['n_etiquetas'] <= limite)
-                        seleccion.append(dict(meta, horas=horas, limite_etiquetas=limite,
-                                              seleccion_certificada=certificada, **ganador))
-            print(f"  Factorial: CV={cv:.0%}, correlacion={correlacion}", flush=True)
-
-        self.guardar("08_factorial_politicas", filas)
-        self.guardar("08_factorial_seleccion", seleccion)
-        self.guardar("08_factorial_subconjuntos", subconjuntos)
-        self.guardar("08_validacion_cv", validacion)
-        self.guardar("08_validacion_correlacion", correlaciones)
-        self.guardar("08_demandas_generadas", demandas)
 
     def graficos(self):
         """Gráficos de capacidad y de postergación por producto (solo si esos bloques se corrieron)."""
@@ -740,8 +444,8 @@ class Analisis:
 
 
 def main(argv=None):
-    bloques = ["base", "capacidad", "seleccion", "inventario", "factorial"]
-    parser = argparse.ArgumentParser(description="Análisis de sensibilidad del modelo de postergación.")
+    bloques = ["base", "capacidad"]
+    parser = argparse.ArgumentParser(description="Análisis de resultados del modelo de postergación.")
     parser.add_argument("--bloques", nargs="+", choices=bloques, default=bloques)
     parser.add_argument("--salida", default=os.path.join(BASE_DIR, "results", "analisis_validado"))
     parser.add_argument("--limite-segundos", type=float, default=60)
@@ -751,9 +455,7 @@ def main(argv=None):
 
     d = load_data()
     analisis = Analisis(args.salida, args.limite_segundos)
-    funciones = {"base": analisis.bloque_base, "capacidad": analisis.bloque_capacidad,
-                 "seleccion": analisis.bloque_seleccion, "inventario": analisis.bloque_inventario,
-                 "factorial": analisis.bloque_factorial}
+    funciones = {"base": analisis.bloque_base, "capacidad": analisis.bloque_capacidad}
     for bloque in args.bloques:
         print(f"Ejecutando {bloque}...", flush=True)
         funciones[bloque](d)

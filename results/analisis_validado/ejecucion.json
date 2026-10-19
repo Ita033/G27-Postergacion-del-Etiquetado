@@ -1,16 +1,12 @@
 {
   "bloques": [
     "base",
-    "capacidad",
-    "seleccion",
-    "inventario",
-    "factorial"
+    "capacidad"
   ],
   "estados": {
-    "2": 592,
-    "3": 12
+    "2": 12
   },
-  "modelos_resueltos": 604,
+  "modelos_resueltos": 12,
   "gurobi": [
     11,
     0,
