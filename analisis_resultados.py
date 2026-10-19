@@ -141,77 +141,137 @@ def estadisticas_demanda(data):
     return filas, correlaciones
 
 
+# Puntaje de cada estado del árbol: entre hermanos, "Alta" va sobre la media y "Baja" bajo la media
+PUNTAJE_ESTADO = {"Alta": 1, "Media": 0, "Baja": -1}
+
+
+def hijos(data, n):
+    """Nodos que cuelgan directamente de n."""
+    return [h for h in data['nodos'] if data['antecesores'][h] == n]
+
+
+def estandarizar(x, q):
+    """x con media 0 y varianza 1, ponderando por q (q suma 1)."""
+    x = np.asarray(x, dtype=float)
+    x = x - q @ x
+    sd = np.sqrt(q @ x**2)
+    if sd < 1e-12:
+        raise ValueError("No se puede estandarizar un vector sin variabilidad")
+    return x / sd
+
+
+def factores_rama(data, hs, q):
+    """
+    Factores a y b sobre los hijos `hs` de un nodo: media 0, varianza 1 y sin correlación entre
+    ellos (ponderando por la probabilidad condicional q).
+      a: sigue los estados del árbol (Alta > Media > Baja)
+      b: contrasta "Media" contra los extremos. Solo existe con 3 o más hijos: con 2 hijos los
+         vectores de media 0 son todos múltiplos de a, así que b = None.
+    """
+    puntaje = np.array([PUNTAJE_ESTADO[data['estados_demanda'][h]] for h in hs], dtype=float)
+    a = estandarizar(puntaje, q)
+    if len(hs) < 3:
+        return a, None
+    b = puntaje**2
+    b = b - q @ b
+    b = b - (q @ (a * b)) * a  # se le quita la parte que se parece a a (Gram-Schmidt)
+    return a, estandarizar(b, q)
+
+
 def demanda_transformada(base, cv, correlacion="original"):
     """
-    Copia de `base` con demandas nuevas para el diseño factorial. En cada período (salvo el 1,
-    que tiene un solo nodo) se mantiene la media de cada producto y se fuerza un CV exacto.
+    Copia de `base` con demandas nuevas para el diseño factorial, generadas RAMA POR RAMA.
 
-    Según `correlacion`:
-      original -> se escalan las desviaciones del Anexo A, así que se mantienen sus correlaciones
-      positiva -> todas las etiquetas de un vino suben y bajan juntas (correlación +1)
-      negativa -> las etiquetas de un vino se compensan entre sí (correlación -1/(m-1), m = n° etiquetas)
+    El modelo decide parado en un nodo mirando a sus hijos, así que lo que hay que controlar es
+    la demanda de los hijos de cada nodo (no la de todo el período mezclado). Para cada nodo n
+    y cada producto, la demanda de cada hijo h de n es:
+        demanda_h = m * (1 + cv * z_h)
+      - m: media de los hijos de n en el Anexo A (media condicional). Así se mantiene la relación
+           entre períodos (después de "Alta" siguen demandas altas) y también la media de cada período.
+      - z: media 0 y varianza 1 entre los hijos de n, ponderando por la probabilidad condicional.
+           Así el CV de los hijos de n es exactamente cv.
 
-    Para positiva y negativa se arman escenarios sintéticos con dos "factores" a y b: vectores
-    sobre los nodos del período con media 0, varianza 1 y sin correlación entre ellos (se
-    sacan de un coseno y un seno). Cada etiqueta usa una combinación de a y b.
-
-    Ojo: no se mantienen las medias condicionales del árbol (lo que se espera en los hijos
-    de un nodo dado), solo las medias por período.
-
-    PENDIENTE (ver "Limitaciones actuales y trabajo futuro" en el README): el CV y la correlación
-    se controlan por período, mezclando todos los nodos, pero en el modelo multietapa lo que
-    importa es la incertidumbre de los hijos de cada nodo. Por eso:
-      - el CV objetivo solo se cumple en la decisión de N1; desde el período 2 queda distinto
-        según el entorno (ej. ~10-13 % en positiva con CV 30 %)
-      - en negativa la correlación condicional puede no ser negativa (desde N4 da +1)
-      - en positiva y negativa N2 "Alta" queda igual que N4 "Baja" y se pierde la relación
-        entre períodos
-    Lo correcto sería generar la demanda rama por rama (media, CV y correlación condicionales a
-    cada nodo padre, respetando Alta > Media > Baja), también para "original".
+    Según `correlacion`, z sale de:
+      original -> las desviaciones del Anexo entre los hijos de n (se mantienen sus correlaciones)
+      positiva -> el factor a para todas las etiquetas: suben y bajan juntas (correlación +1)
+      negativa -> con 3 hijos, las etiquetas de un vino se reparten en ángulos iguales entre a y b:
+                  correlación -1/(m-1) (m = n° de etiquetas), la más negativa posible para todas
+                  por igual (-0,5 en el vino 1 y -1 en el vino 2).
+                  Con 2 hijos solo se puede llegar a ±1: la primera etiqueta sigue a y las demás van
+                  al revés. En el vino 1, (1,1) queda en -1 con (1,2) y (1,3), pero (1,2) y (1,3)
+                  quedan en +1 entre ellas. Es una limitación del árbol (N2 y N4 tienen 2 hijos).
+    En positiva y negativa la primera etiqueta de cada vino sigue los estados del árbol, así que
+    entre vinos la correlación queda en +1 (en el Anexo es 0,97).
     """
     d = copy.deepcopy(base)
-    for t, ns in nodos_por_periodo(base).items():
-        if len(ns) == 1:
+    for n in base['nodos']:
+        hs = hijos(base, n)
+        if not hs:
             continue
-        p = np.array([base['probabilidades'][n] for n in ns])
-
-        # Factores a y b: media 0, varianza 1 y covarianza 0 (ponderando por p)
-        angulos = 2 * np.pi * (np.cumsum(p) - p / 2)
-        a = np.cos(angulos)
-        a -= p @ a
-        a /= np.sqrt(p @ a**2)
-        b = np.sin(angulos)
-        b -= p @ b
-        b -= (p @ (a * b)) * a
-        b /= np.sqrt(p @ b**2)
+        q = np.array([base['probabilidades'][h] for h in hs])
+        q = q / q.sum()  # probabilidades condicionales a estar en n
+        a, b = factores_rama(base, hs, q)
 
         for i in base['vinos']:
             etiquetas = base['etiquetas_por_vino'][i]
             if correlacion == "negativa" and len(etiquetas) not in (2, 3):
                 raise ValueError("El generador negativo admite 2 o 3 etiquetas por vino")
             for k, j in enumerate(etiquetas):
-                x = np.array([base['demandas'][i, j, n] for n in ns])
-                media, sd, _ = momentos(x, p)
-                # z = desviación estandarizada de cada nodo (media 0, varianza 1)
+                x = np.array([base['demandas'][i, j, h] for h in hs])
+                media = q @ x
                 if correlacion == "original":
-                    if sd == 0:
-                        raise ValueError("No se puede escalar un producto sin variabilidad")
-                    z = (x - media) / sd
+                    z = estandarizar(x, q)
                 elif correlacion == "positiva":
                     z = a
                 elif correlacion == "negativa":
-                    # Las etiquetas quedan repartidas en ángulos iguales, así se compensan
-                    theta = 2 * np.pi * k / len(etiquetas)
-                    z = np.cos(theta) * a + np.sin(theta) * b
+                    if b is not None:
+                        # Las etiquetas quedan repartidas en ángulos iguales, así se compensan
+                        theta = 2 * np.pi * k / len(etiquetas)
+                        z = np.cos(theta) * a + np.sin(theta) * b
+                    else:
+                        z = a if k == 0 else -a
                 else:
                     raise ValueError(correlacion)
                 valores = media * (1 + cv * z)
                 if np.min(valores) < 0:
                     raise ValueError("El CV produce demanda negativa; no se trunca silenciosamente")
-                for n, valor in zip(ns, valores):
-                    d['demandas'][i, j, n] = float(valor)
+                for h, valor in zip(hs, valores):
+                    d['demandas'][i, j, h] = float(valor)
+
     validar_datos(d)
+    # Chequeo: el CV de los hijos de cada nodo tiene que ser exactamente el pedido
+    for r in estadisticas_condicionales(d)[0]:
+        if r['etiqueta'] != "TOTAL" and not np.isclose(r['cv'], cv):
+            raise AssertionError(f"CV condicional {r['cv']:.4f} distinto de {cv} desde N{r['nodo_padre']}")
     return d
+
+
+def estadisticas_condicionales(data):
+    """
+    Igual que estadisticas_demanda, pero mirando los hijos de cada nodo (lo que controla
+    demanda_transformada): media, sd y CV de cada etiqueta (y del total del vino) y la
+    correlación entre cada par de etiquetas del mismo vino, condicionales a estar en el nodo padre.
+    """
+    filas, correlaciones = [], []
+    for n in data['nodos']:
+        hs = hijos(data, n)
+        if not hs:
+            continue
+        p = np.array([data['probabilidades'][h] for h in hs])
+        base_fila = dict(nodo_padre=n, periodo=data['periodos_nodo'][hs[0]], n_hijos=len(hs))
+        for i in data['vinos']:
+            etiquetas = data['etiquetas_por_vino'][i]
+            xs = {j: np.array([data['demandas'][i, j, h] for h in hs]) for j in etiquetas}
+            for j, x in list(xs.items()) + [("TOTAL", sum(xs.values()))]:
+                media, sd, cv = momentos(x, p)
+                filas.append(dict(base_fila, vino=i, etiqueta=j, media=media, sd=sd, cv=cv))
+            for a, b in combinations(etiquetas, 2):
+                ma, sa, _ = momentos(xs[a], p)
+                mb, sb, _ = momentos(xs[b], p)
+                cov = float((p / p.sum()) @ ((xs[a] - ma) * (xs[b] - mb)))
+                correlaciones.append(dict(base_fila, vino=i, etiqueta_a=a, etiqueta_b=b, covarianza=cov,
+                                          correlacion=cov / (sa * sb) if sa * sb > 1e-12 else np.nan))
+    return filas, correlaciones
 
 
 # -----------------------------------------------------------------------------
@@ -593,15 +653,13 @@ class Analisis:
         self.guardar("07_capacidad_bodega", filas_bodega)
 
     def bloque_factorial(self, d):
-        # Ojo: las demandas de positiva y negativa tienen limitaciones conocidas (ver demanda_transformada).
-        # Usar estos resultados con cuidado hasta implementar la generación rama por rama.
         filas, seleccion, validacion, correlaciones, demandas, subconjuntos = [], [], [], [], [], []
         for cv, correlacion in product(d['niveles_variabilidad'], ("original", "positiva", "negativa")):
             dd = demanda_transformada(d, cv, correlacion)
             meta = dict(cv_objetivo=cv, entorno=correlacion)
 
-            # Para revisar que la demanda generada tenga el CV y la correlación pedidos
-            estadisticas, corrs = estadisticas_demanda(dd)
+            # Para revisar que la demanda generada tenga el CV y la correlación pedidos (en cada rama)
+            estadisticas, corrs = estadisticas_condicionales(dd)
             validacion.extend(dict(meta, **r) for r in estadisticas)
             correlaciones.extend(dict(meta, **r) for r in corrs)
             demandas.extend(dict(meta, vino=i, etiqueta=j, nodo=n, demanda=x)

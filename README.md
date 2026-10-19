@@ -111,52 +111,61 @@ En `07_capacidad_bodega.csv` aparecen modelos infactibles (estado Gurobi 3) cuan
 
 ---
 
-## Limitaciones actuales y trabajo futuro: escenarios del bloque `factorial`
+## Escenarios del bloque `factorial`
 
-El Anexo A pide caracterizar el beneficio de la postergación combinando capacidad × variabilidad (CV de 10, 30 y 50 %) × correlación entre productos (positiva y negativa). Hoy el bloque `factorial` genera esas demandas con `demanda_transformada` (en `analisis_resultados.py`). El generador es correcto para lo que promete, pero lo que controla no es exactamente el escenario teórico que se quiere comparar. Queda pendiente para una siguiente etapa.
+El Anexo A pide caracterizar el beneficio de la postergación combinando capacidad (21, 42, 63 y 84 h) × variabilidad (CV de 10, 30 y 50 %) × correlación entre productos. El bloque `factorial` genera esas demandas con `demanda_transformada` (en `analisis_resultados.py`) y resuelve las tres políticas y las combinaciones de etiquetas postergables en los 36 escenarios.
 
-### Qué hace hoy y qué está bien
+### Cómo se generan las demandas (rama por rama)
 
-Para cada producto y período t ≥ 2: `demanda = media × (1 + CV × z)`, donde `z` tiene media 0 y varianza 1 ponderando por la probabilidad de los nodos del período.
+El modelo decide parado en un nodo, mirando a sus hijos. Por eso lo que se controla es la demanda de **los hijos de cada nodo**, no la de todo el período mezclado. Para cada nodo `n` y cada producto:
 
-*   **Media:** se mantiene la del Anexo en cada período.
-*   **CV:** es exacto en cada período (es la definición del Anexo: desviación estándar como fracción de la media, por producto).
-*   **Positiva:** todas las etiquetas de un vino usan el mismo `z` (correlación +1).
-*   **Negativa:** se usan dos vectores ortonormales `a` y `b` rotados en ángulos iguales. La correlación queda en −1/(m−1), con m = número de etiquetas (−0,5 en el vino 1 y −1 en el vino 2), que es la correlación negativa común más extrema posible.
-*   **Original:** escala las desviaciones del Anexo, así que mantiene sus correlaciones y la forma del árbol.
-*   **Sin truncar:** si una demanda saliera negativa el código se detiene en vez de cortarla a 0, lo que cambiaría la media y el CV.
+```
+demanda_hijo = m × (1 + CV × z_hijo)
+```
 
-### Limitaciones
+*   **`m`:** media de los hijos de `n` en el Anexo A (media condicional). Mantiene la relación entre períodos (después de "Alta" siguen demandas altas) y la media de cada período.
+*   **`z`:** tiene media 0 y varianza 1 entre los hijos de `n`, ponderando por la probabilidad condicional. Así el CV de los hijos de cada nodo es exactamente el pedido (es la definición del Anexo: desviación estándar como fracción de la media, por producto). El código lo verifica en cada escenario.
 
-Los momentos se controlan **por período, mezclando todos los nodos**. En un modelo multietapa lo que importa es la incertidumbre que queda **al decidir en cada nodo**, o sea, la distribución de sus hijos.
+Según el entorno, `z` sale de:
 
-1.  **El CV objetivo solo se cumple en la primera decisión (desde N1).** Desde los nodos del período 2, el CV condicional de la demanda del período 3 queda en 0,09–0,34 en "original", 0,10–0,13 en "positiva" y 0,02–0,21 en "negativa" (con CV objetivo de 30 %). Por eso la diferencia entre entornos mezcla el efecto de la correlación con un cambio en la incertidumbre del período 3.
-2.  **"Negativa" no es negativa en la segunda decisión.** Desde N3 la correlación entre (1,1) y (1,2) es −0,15, y desde N4 es +1.
-3.  **En positiva y negativa se pierden los estados del árbol.** `z` sale de un coseno, y con probabilidades simétricas (0,3 / 0,4 / 0,3) los nodos "Alta" y "Baja" quedan con la misma demanda (N2 = N4 y N7 = N9), y "Media" queda como la más baja.
-4.  **Se pierde la relación entre períodos.** La demanda del período 3 no depende de la del nodo padre: por ejemplo, N11 (Baja → Baja) queda como el nodo con más demanda.
-5.  **La correlación entre vinos no se controla.** La primera etiqueta de cada vino usa el mismo `z`, así que (1,1) y (2,1) quedan con correlación +1. En el Anexo es 0,97, por lo que el efecto es menor.
+*   **Original:** las desviaciones del Anexo entre los hijos de `n`. Se mantienen sus correlaciones.
+*   **Positiva:** un factor que sigue los estados (Alta > Media > Baja), igual para todas las etiquetas. Correlación +1.
+*   **Negativa:** las etiquetas de un vino se reparten en ángulos iguales entre dos factores sin correlación entre ellos. Correlación −1/(m−1), con m = número de etiquetas: −0,5 en el vino 1 y −1 en el vino 2. Es la correlación negativa común más extrema posible, porque Var(Σz) = m + m(m−1)ρ ≥ 0.
 
-Dos observaciones sobre los datos del Anexo que conviene tener presentes:
+Si alguna demanda saliera negativa el código se detiene en vez de cortarla a 0 (cortar cambiaría la media y el CV). Las tablas `08_validacion_cv` y `08_validacion_correlacion` muestran el CV y la correlación de los hijos de cada nodo.
 
-*   **CV del caso base:** el caso base ya tiene un CV de ~33–56 % en el período 2, más cerca del nivel alto que del bajo.
+### Limitaciones que quedan
+
+*   **Nodos con 2 hijos (N2 y N4):** con dos escenarios cualquier correlación es +1 o −1. Ahí el vino 2 queda en −1, pero el vino 1 (3 etiquetas) no puede tener sus tres correlaciones negativas a la vez: (1,1) queda en −1 con (1,2) y (1,3), y (1,2) con (1,3) en +1. Se evitaría con un árbol de al menos 3 hijos por nodo.
+*   **Correlación entre vinos:** en positiva y negativa la primera etiqueta de cada vino sigue los estados del árbol, así que (1,1) y (2,1) quedan con correlación +1 (en el Anexo es 0,97).
+*   **Las probabilidades y los estados del árbol** son los del Anexo en todos los escenarios; solo cambian las demandas.
+
+Dos observaciones sobre los datos del Anexo:
+
+*   **CV del caso base:** el caso base tiene un CV de ~33–56 % en el período 2, más cerca del nivel alto que del bajo.
 *   **Correlación del vino 1:** el Anexo dice que el vino 1 tiene correlaciones negativas, pero en los datos (1,1) y (1,3) tienen correlación +1. En el vino 1 las correlaciones son mixtas.
 
-### Qué habría que hacer
+Hasta la versión `baac601` la demanda se generaba por período (mezclando todos los nodos), lo que solo cumplía el CV en la primera decisión y desordenaba los estados del árbol. Con la generación rama por rama los costos de postergación subieron entre 7 y 25 % en "original" y "negativa" y hasta 90 % en "positiva", pero el ahorro porcentual frente a contra stock casi no cambió.
 
-Generar la demanda **rama por rama**: para cada nodo padre `n`, construir la demanda de sus hijos con
+### Conclusiones
 
-*   **Media:** la media condicional del Anexo para esos hijos, para mantener la relación entre períodos (después de "Alta" siguen demandas altas).
-*   **CV:** el objetivo, exacto pero **condicional** a estar en `n`.
-*   **Correlación:** la pedida entre etiquetas del mismo vino, también condicional a `n`.
-*   **Positiva y negativa:** un `z` que respete el orden Alta > Media > Baja (al menos para la primera etiqueta de cada vino).
-*   **Original:** el mismo tratamiento rama por rama, escalando las desviaciones del Anexo dentro de cada grupo de hermanos, para que los tres entornos tengan la misma incertidumbre en cada decisión y solo cambie la correlación.
+Las 468 corridas del bloque (36 escenarios × 3 políticas y 10 combinaciones de etiquetas) terminaron en el óptimo (gap 1e-8) y la selección de etiquetas quedó certificada en todos los escenarios. Ahorro de postergar frente a contra stock (MTS):
 
-Restricción del árbol que hay que declarar: los nodos con 2 hijos (N2 y N4) solo admiten correlaciones de ±1. Ahí el vino 2 puede quedar en −1, pero el vino 1 (3 etiquetas) no puede tener las tres correlaciones negativas a la vez. Una opción es dejar (1,1) en −1 con (1,2) y (1,3), lo que deja (1,2) con (1,3) en +1. Se podría evitar con un árbol de al menos 3 hijos por nodo.
+| Capacidad | Correlación negativa | Original (Anexo) | Correlación positiva |
+|-----------|---------------------:|-----------------:|---------------------:|
+| 84 h      | 91–92 %              | 64–65 %          | 33–34 %              |
+| 63 h      | 90–99,9 %            | 63–99,5 %        | 33–99,4 %            |
+| 42 h      | 88–95 %              | 66–91 %          | 40–84 %              |
+| 21 h      | 15 %                 | 15 %             | 13–15 %              |
 
-Cuando se implemente, cambian solo las tablas `08_*`. `main.py` y los demás bloques no usan este generador. Un prototipo preliminar (no incluido en el repositorio) dio:
-
-*   **Costos:** suben entre 7 y 25 % en "original" y "negativa", y hasta 90 % en "positiva" (antes el período 3 tenía menos incertidumbre que la pedida).
-*   **Ahorro frente a contra stock:** casi no cambia (~33 % positiva, ~65 % original, ~91 % negativa a 84 h).
-*   **Orden de los entornos:** "negativa ahorra más que original y original más que positiva" pasó de cumplirse en 9 a 11 de las 12 combinaciones de CV y capacidad.
-
-Es decir, se esperan los mismos resultados cualitativos con números más defendibles.
+1.  **Postergar siempre es lo más barato.** Gana en los 36 escenarios. Está garantizado, porque contra stock y contra pedido son el modelo de postergación con más restricciones. Contra pedido es siempre la peor política (cientos o miles de millones en atrasos).
+2.  **Con capacidad holgada (84 h), el ahorro depende de la correlación y casi nada del CV.** El ahorro es ~92 % con correlación negativa, ~65 % con la del Anexo y ~33 % con positiva, para cualquier CV. Una botella sin etiquetar sirve para cualquier etiqueta de su vino: si las demandas se compensan, el total del vino es estable y el WIP cubre lo que se pida (*risk pooling*). Si suben y bajan juntas, esa ventaja casi desaparece. Un CV más alto sube los costos de todas las políticas en proporción parecida, así que el ahorro porcentual se mantiene.
+3.  **Con capacidad intermedia (63 h), postergar protege el servicio.** Postergación no tiene atrasos en ningún escenario de 63 u 84 h. Contra stock sí atrasa pedidos con 63 h cuando la demanda varía mucho: con correlación positiva desde CV 30 %, y en los tres entornos con CV 50 %. En esos casos su costo se dispara y el ahorro de postergar llega a 91–99,9 %. Para postergación, bajar de 84 a 63 h cuesta poco (entre 1 y 14 % más).
+4.  **Con capacidad ajustada (42 h), todas las políticas atrasan pedidos, pero postergación mucho menos.** Por ejemplo, con CV 30 % y la correlación del Anexo atrasa 17.740 botellas·período, frente a 75.955 de contra stock. Aquí sí importa el CV: con correlación positiva el ahorro cae de 84 % (CV 10 %) a 40 % (CV 50 %).
+5.  **Con 21 h la línea no da abasto.** Todas las políticas cuestan entre $3.000 y $4.100 millones, con la línea a ~100 % y solo ~55–59 % de la demanda atendida a tiempo. El ahorro de postergar se reduce a ~15 % y ya no depende de la correlación: falta capacidad, no flexibilidad.
+6.  **Cuánto se posterga depende del entorno.** Con 84 h y correlación negativa se etiqueta el 100 % desde el WIP. Con correlación positiva y CV 50 % baja a 77 %. Con CV 50 %, el WIP esperado pasa de ~19.000 botellas·período con correlación negativa a ~164.000 con positiva: cuando las etiquetas no se compensan, hay que guardar más botellas sin etiquetar para cubrir las variaciones.
+7.  **Qué etiquetas postergar (con 84 h, como % del costo sin postergar):**
+    *   **Correlación negativa:** el beneficio está en postergar todo. Con 2 etiquetas conviene el vino 2 (correlación −1): 63 %. Con 3, el vino 1 completo: 45 %. Con 4: 29 %. Con las 5: 8–9 %. La última etiqueta, la que completa los dos vinos, todavía aporta mucho (de 29 % a 8–9 %).
+    *   **Original:** con 2 etiquetas conviene (1,1) y (1,2), que en el Anexo tienen correlación −0,99. Esas dos dejan el costo en 56 % y las 5 en 35–36 %.
+    *   **Positiva:** cada etiqueta agrega un poco: 84 % con 2, 79 % con 3, 72 % con 4 y 67 % con 5.
+    *   **Capacidad intermedia:** con 63 h y CV 50 %, postergar solo 2 etiquetas ya evita casi todos los atrasos de contra stock y baja el costo a ~1 % del de no postergar en los entornos original y negativa. Con correlación positiva hacen falta 4 etiquetas para llegar a ese nivel.
