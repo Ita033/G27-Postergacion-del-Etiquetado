@@ -12,9 +12,6 @@ El análisis está dividido en bloques que se pueden correr por separado:
                 correlaciones) y detalle por nodo y período
   capacidad  -> las políticas con 21, 42, 63 y 84 horas por período
 
-La versión completa (selección de etiquetas, costos de inventario, límite de bodega y diseño
-factorial de variabilidad x correlación) quedó respaldada en la rama `respaldo-analisis-completo`.
-
 Se corre desde la raíz del repo:
   python analisis_resultados.py                                   (los dos bloques, unos segundos)
   python analisis_resultados.py --bloques base capacidad

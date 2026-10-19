@@ -116,11 +116,3 @@ Escribe tablas CSV (separador `;` y coma decimal, para abrir directo en Excel), 
 | 39 | CV de la demanda del período 2 por etiqueta y por vino | `03_demanda_por_periodo.csv` |
 | 40 | Tiempo de resolución y no anticipatividad | `main.py` (verificación al final de la re-planificación) |
 | 49 | Ahorro y atraso según la capacidad de la línea | `06_capacidad.csv` |
-
-### Respaldo del análisis completo
-
-La versión anterior de `analisis_resultados.py` tenía además los bloques `seleccion` (subconjuntos de etiquetas postergables), `inventario` (costos de inventario y límite de bodega) y `factorial` (variabilidad × correlación de la demanda × capacidad, con demandas generadas rama por rama), con sus tablas `05_*`, `07_*` y `08_*`, la explicación de cómo se generan los escenarios y sus conclusiones. Quedó respaldada en la rama `respaldo-analisis-completo`:
-
-```bash
-git checkout respaldo-analisis-completo   # para volver a main: git checkout main
-```
