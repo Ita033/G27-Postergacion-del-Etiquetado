@@ -1,0 +1,23 @@
+{
+  "bloques": [
+    "base",
+    "capacidad",
+    "seleccion",
+    "inventario",
+    "factorial"
+  ],
+  "estados": {
+    "2": 592,
+    "3": 12
+  },
+  "modelos_resueltos": 604,
+  "gurobi": [
+    11,
+    0,
+    3
+  ],
+  "limite_segundos": 60,
+  "mip_gap": 1e-08,
+  "seed": 27,
+  "threads": 1
+}

@@ -1,0 +1,7 @@
+# Requiere Python 3.10+ y una licencia de Gurobi (la académica sirve).
+# Probado con Python 3.11.7, gurobipy 11.0.3, pandas 3.0.3, numpy 2.4.6 y matplotlib 3.11.2.
+gurobipy>=11.0
+pandas>=2.0
+numpy>=1.24
+# Solo para los gráficos de analisis_resultados.py (sin matplotlib igual se generan las tablas)
+matplotlib>=3.7

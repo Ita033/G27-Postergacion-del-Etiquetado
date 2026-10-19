@@ -1,5 +1,5 @@
 """
-prueba_enteras.py
+pruebas_enteras.py
  
 Prueba que salió en la reunión con el profe: en estricto rigor las botellas son
 enteras, pero dejarlas enteras puede hacer el modelo más lento. La idea es medir
@@ -11,7 +11,7 @@ Para cada política (postergación, contra pedido y contra stock) resolvemos:
   2) el mismo modelo pero con w_b, w_bl, w_l, s_b, s_bl, b_bl enteras
 y comparamos costo, tiempo de resolución y gap.
  
-Se corre desde la raíz del repo:  python prueba_enteras.py
+Se corre desde la raíz del repo:  python pruebas_enteras.py
 """
 import os
 import io
