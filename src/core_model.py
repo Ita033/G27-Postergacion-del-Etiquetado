@@ -46,19 +46,33 @@ def build_base_model(data):
     # =========================================================================
     # 2. Restricciones de Condiciones Iniciales (Nodo 0)
     # =========================================================================
+    # Por defecto (una sola corrida) el nodo 0 representa el inicio del horizonte:
+    # inventarios iniciales del Anexo A y la producción predefinida que cubre la demanda del nodo 1.
+    # Al re-planificar período a período (src/replanificacion.py) el nodo 0 representa en cambio el
+    # cierre del período anterior: data['condiciones_iniciales'] trae el inventario con que
+    # se parte y lo que se embotelló en el período anterior y todavía viene "en camino"
+    # (lo embotellado queda disponible una etapa después).
+    ini = data.get('condiciones_iniciales')
+
     for i in vinos:
-        # Inventarios iniciales WIP
-        m.addConstr(s_b[i, 0] == data['inv_inicial_wip'], name=f"init_sb_{i}")
-        m.addConstr(w_b[i, 0] == 0, name=f"init_wb_{i}")
+        # Inventario inicial sin etiquetar y embotellado sin etiqueta que llega al primer nodo
+        s_b_0 = data['inv_inicial_wip'] if ini is None else ini['s_b'][i]
+        w_b_0 = 0 if ini is None else ini['w_b'][i]
+        m.addConstr(s_b[i, 0] == s_b_0, name=f"init_sb_{i}")
+        m.addConstr(w_b[i, 0] == w_b_0, name=f"init_wb_{i}")
         
         for j in etiquetas[i]:
-            # Inventarios y backorders iniciales FG
-            m.addConstr(s_bl[i, j, 0] == data['inv_inicial_fg'], name=f"init_sbl_{i}_{j}")
-            m.addConstr(b_bl[i, j, 0] == data['inv_inicial_bo'], name=f"init_bbl_{i}_{j}")
+            # Inventario inicial terminado y atrasos iniciales
+            s_bl_0 = data['inv_inicial_fg'] if ini is None else ini['s_bl'][(i, j)]
+            b_bl_0 = data['inv_inicial_bo'] if ini is None else ini['b_bl'][(i, j)]
+            m.addConstr(s_bl[i, j, 0] == s_bl_0, name=f"init_sbl_{i}_{j}")
+            m.addConstr(b_bl[i, j, 0] == b_bl_0, name=f"init_bbl_{i}_{j}")
             m.addConstr(w_l[i, j, 0] == 0, name=f"init_wl_{i}_{j}")
             
-            # La demanda del nodo 1 se satisface con producción predefinida equivalente
-            m.addConstr(w_bl[i, j, 0] == data['demandas'][(i, j, 1)], name=f"init_wbl_{i}_{j}")
+            # Embotellado y etiquetado que llega al primer nodo. En una sola corrida es la
+            # producción predefinida que cubre la demanda del nodo 1 (Anexo A).
+            w_bl_0 = data['demandas'][(i, j, 1)] if ini is None else ini['w_bl'][(i, j)]
+            m.addConstr(w_bl[i, j, 0] == w_bl_0, name=f"init_wbl_{i}_{j}")
 
     # =========================================================================
     # 3. Restricciones Estructurales (Nodos 1 al 11)
