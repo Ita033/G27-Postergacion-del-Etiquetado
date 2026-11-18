@@ -35,6 +35,9 @@ hoja_barrido = next(s for s in xl1.sheet_names if "barrido" in s.lower() or "fin
 hoja_diag = next((s for s in xl1.sheet_names if s != hoja_barrido), hoja_barrido)
 
 df_barrido = pd.read_excel(xl1, sheet_name=hoja_barrido)
+f_out1b = os.path.join(RUTA_EXCEL, "out_1b_barrido_capacidad.xlsx")
+if os.path.exists(f_out1b):  # barrido cada 3 h (python analisis.py barrido)
+    df_barrido = pd.read_excel(f_out1b)
 df_diag = pd.read_excel(xl1, sheet_name=hoja_diag)
 
 xl2 = pd.ExcelFile(f_out2)
@@ -52,51 +55,78 @@ def col_match(df, candidatos):
 
 
 # ==============================================================================
-# GRÁFICO 1: CURVA EN CAMPANA DEL AHORRO Y ATRASOS (BARRIDO FINO K = 20..84 h)
+# GRÁFICO 1: CURVA DE AHORRO SEGÚN CAPACIDAD Y SUS TRES ZONAS (BARRIDO K = 21..84 h)
 # ==============================================================================
 df_barrido = df_barrido.sort_values(by="K (h)")
 K_vals = df_barrido["K (h)"].values
 ahorro_vals = df_barrido["Ahorro_MTS_pct"].values
 if np.nanmax(ahorro_vals) <= 1.5:
     ahorro_vals = ahorro_vals * 100.0
+bo_post = df_barrido["Backlog_Post"].values
+bo_mts = df_barrido["Backlog_MTS"].values
+paso = K_vals[1] - K_vals[0]
 
-fig, ax1 = plt.subplots(figsize=(9.5, 4.8))
+# Zonas: (1) ambas políticas se atrasan, (2) solo MTS se atrasa, (3) ninguna se atrasa
+k_post_ok = K_vals[np.argmax(bo_post < 1)]   # primer K en que Postergación ya no se atrasa
+k_mts_ok = K_vals[np.argmax(bo_mts < 1)]     # primer K en que MTS ya no se atrasa
+lim1, lim2 = k_post_ok - paso / 2, k_mts_ok - paso / 2
+
+fig, ax1 = plt.subplots(figsize=(9.5, 5.0))
 ax2 = ax1.twinx()
 
-ancho = 1.4
-b1 = ax2.bar(K_vals - ancho / 2, df_barrido["Backlog_MTS"] / 1000.0, width=ancho,
-             color=DORADO, alpha=0.45, label="Atraso terminal MTS (miles bot.)")
-b2 = ax2.bar(K_vals + ancho / 2, df_barrido["Backlog_Post"] / 1000.0, width=ancho,
-             color=GRIS_OSCURO, alpha=0.45, label="Atraso terminal Postergación (miles bot.)")
+x_min, x_max = K_vals[0] - paso / 2, K_vals[-1] + paso / 2
+for a, b, color, texto in [(x_min, lim1, "#F3ECEC", "1. Ambas se atrasan"),
+                           (lim1, lim2, "#E9DCDC", "2. Solo MTS se atrasa"),
+                           (lim2, x_max, "#F7F5F1", "3. Ninguna se atrasa")]:
+    ax2.axvspan(a, b, color=color, zorder=0)   # fondo en el eje de atrás, bajo las barras
+    ax1.text((a + b) / 2, 114, texto, ha="center", fontsize=8.8, fontweight="bold", color=GRIS_OSCURO)
+ax1.set_xlim(x_min, x_max)
+
+ancho = paso * 0.38
+b1 = ax2.bar(K_vals - ancho / 2, bo_mts / 1000.0, width=ancho,
+             color=DORADO, alpha=0.55, label="Atraso acumulado MTS")
+b2 = ax2.bar(K_vals + ancho / 2, bo_post / 1000.0, width=ancho,
+             color=GRIS_OSCURO, alpha=0.45, label="Atraso acumulado Postergación")
 
 l1 = ax1.plot(K_vals, ahorro_vals, color=BURDEO, marker="o", linewidth=2.8,
-              markersize=6.5, label="Ahorro frente a MTS (%)", zorder=5)
+              markersize=5.5, label="Ahorro vs. MTS (%)", zorder=5)
 
-for k_target in [20, 44, 64, 84]:
-    idx = (np.abs(K_vals - k_target)).argmin()
-    ax1.annotate(f"{ahorro_vals[idx]:.1f}%",
+# Niveles del Anexo A (21, 42, 63, 84 h): "K h: ahorro%"
+for k_target in [21, 42, 63, 84]:
+    idx = int(np.abs(K_vals - k_target).argmin())
+    if k_target == K_vals[0]:
+        alinear, dx = "left", -4        # primer punto: el texto hacia la derecha
+    elif k_target == K_vals[-1]:
+        alinear, dx = "right", 4        # último punto: el texto hacia la izquierda
+    else:
+        alinear, dx = "center", 0
+    ax1.annotate(f"{int(K_vals[idx])} h: {ahorro_vals[idx]:.1f}%".replace(".", ","),
                  xy=(K_vals[idx], ahorro_vals[idx]),
-                 xytext=(0, 10), textcoords="offset points",
-                 ha="center", fontsize=9.5, fontweight="bold", color=BURDEO)
+                 xytext=(dx, 11), textcoords="offset points",
+                 ha=alinear, fontsize=11.5, fontweight="bold", color=BURDEO, zorder=6,
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.85))
 
-ax1.set_title("El ahorro alcanza su máximo (99,9%) en capacidad estrecha antes de saturar la línea",
-              fontsize=12.5, fontweight="bold", color=BURDEO, pad=32)
+ax1.set_title(f"Postergar ahorra más cuando la capacidad es justa",
+              fontsize=13, fontweight="bold", color=BURDEO, pad=38)
 ax1.set_xlabel("Capacidad disponible por período (horas)", fontsize=10.5, fontweight="bold", color=GRIS_OSCURO)
 ax1.set_ylabel("Ahorro de costo esperado vs. MTS (%)", fontsize=10.5, fontweight="bold", color=BURDEO)
-ax2.set_ylabel("Atraso terminal en t=3 (miles de botellas)", fontsize=10, color="#665533")
+ax2.set_ylabel("Atraso acumulado esperado (miles de bot·período)", fontsize=9.5, color="#665533")
 
-ax1.set_ylim(0, 112)
+ax1.set_ylim(0, 120)
+ax1.set_yticks(range(0, 101, 20))
 ax1.set_xticks(K_vals)
+ax1.tick_params(axis="x", labelsize=8.5)
 ax1.yaxis.set_major_formatter(mtick.PercentFormatter())
 ax1.grid(axis="y", linestyle="--", alpha=0.4)
+ax1.set_zorder(ax2.get_zorder() + 1)   # la curva queda sobre las barras
+ax1.patch.set_visible(False)
 ax1.spines["top"].set_visible(False)
 ax2.spines["top"].set_visible(False)
 
-# Leyenda compacta horizontal justo debajo del título (cero superposición con la curva)
 handles = l1 + [b1, b2]
 labels = [h.get_label() for h in handles]
-ax1.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.01),
-           ncol=3, frameon=True, facecolor="white", framealpha=0.95, fontsize=8.2)
+ax1.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
+           ncol=3, frameon=False, fontsize=10.5, handlelength=2.2, columnspacing=2.5)
 
 plt.tight_layout()
 plt.savefig(os.path.join(CARPETA_SALIDA, "fig1_campana_capacidad.png"))

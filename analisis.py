@@ -10,6 +10,7 @@ Imprime todas las tablas en consola y guarda respaldos en Excel (out_1 a out_6).
 Uso desde la raíz del repo:
   python analisis.py              -> corre los 6 bloques completos
   python analisis.py capacidad    -> solo diagnóstico de saturación y K
+  python analisis.py barrido      -> solo barrido de capacidad cada 3 h (21..84)
   python analisis.py factorial    -> solo diseño K x CV x Correlación
   python analisis.py etiquetas    -> solo postergación parcial en K=84,63,42
   python analisis.py benchmarks   -> solo Híbrido Realista (MTS+MTO) y VMS
@@ -391,6 +392,63 @@ def exp_diagnostico_capacidad(data):
 
 
 # =============================================================================
+# BLOQUE 1B (EXTRA): BARRIDO DE CAPACIDAD CADA 3 h (21, 24, ..., 84)
+# Incluye exactamente los niveles del Anexo A (21, 42, 63, 84) y permite ver
+# dónde cambia el régimen de la curva de ahorro. Lo usa graficos.py (fig. 1).
+# =============================================================================
+
+def atrasos_por_periodo(data, v):
+    """Botellas pendientes (esperadas) al cierre de cada período y botellas que
+    llegan tarde contadas una sola vez (FIFO: lo pendiente es lo más reciente)."""
+    prob, productos = data['probabilidades'], obtener_productos(data)
+    pendientes = {t: 0.0 for t in sorted(set(data['periodos_nodo'].values()))}
+    tarde = 0.0
+    for n in data['nodos']:
+        t = data['periodos_nodo'][n]
+        for (i, j) in productos:
+            b = v['b_bl'][i, j, n].X
+            pendientes[t] += prob[n] * b
+            tarde += prob[n] * min(data['demandas'][(i, j, n)], b)
+    return pendientes, tarde
+
+
+def exp_barrido_capacidad(data, paso=3):
+    print(f"\n[1B] Barrido de capacidad cada {paso} h...")
+    filas = []
+    for K in range(21, 85, paso):
+        dk = clonar_datos(data, capacidad_horas=K)
+        fila = {'K (h)': K}
+        res = {}
+        for nombre, politica in (("Post", None), ("MTS", apply_mts_policy)):
+            kpis, _, v = resolver_y_medir(dk, politica)
+            pend, tarde = atrasos_por_periodo(dk, v)
+            res[nombre] = kpis
+            fila[f'Costo_{nombre}'] = kpis['Costo Total ($)']
+            for t, b in pend.items():
+                fila[f'Pendientes_fin_t{t}_{nombre}'] = b      # botellas pendientes al cierre de t
+            fila[f'Backlog_{nombre}'] = sum(pend.values())     # suma t1+t2+t3 (bot-período)
+            fila[f'Botellas_tarde_{nombre}'] = tarde           # cada botella atrasada cuenta 1 vez
+            fila[f'Serv_{nombre}_pct'] = kpis['Servicio FIFO (%)']
+        fila['Ahorro_MTS_pct'] = 100.0 * (res['MTS']['Costo Total ($)'] - res['Post']['Costo Total ($)']) / res['MTS']['Costo Total ($)']
+        fila['Tasa_Post_pct'] = res['Post']['Tasa Postergación Global (%)']
+        fila['Util_Max_Post_pct'] = res['Post']['Utilización Máxima (%)']
+        fila['Nodos_Sat_Post'] = res['Post']['Nodos Saturados (#/11)']
+        fila['Nodos_Sat_MTS'] = res['MTS']['Nodos Saturados (#/11)']
+        filas.append(fila)
+
+    df = pd.DataFrame(filas)
+    explicacion = pd.DataFrame([
+        ('Pendientes_fin_tX', 'Botellas pedidas y aún no entregadas al cierre del período X (esperadas, ponderadas por probabilidad). Pendientes_fin_t3 = atraso terminal.'),
+        ('Backlog', 'Suma de Pendientes_fin_t1 + t2 + t3 (bot-período). Una botella pendiente 2 períodos cuenta 2 veces. Costo de atrasos = 15.000 x Backlog. Es lo que muestran las barras del gráfico.'),
+        ('Botellas_tarde', 'Botellas que no se entregaron en su período, cada una contada una sola vez = demanda x (100% - servicio).'),
+        ('Serv_pct', 'Servicio a tiempo (FIFO) en los períodos 2 y 3.'),
+    ], columns=['Columna', 'Qué significa'])
+    imprimir_tabla(f"1B. BARRIDO DE CAPACIDAD (CADA {paso} HORAS)", df)
+    with pd.ExcelWriter("out_1b_barrido_capacidad.xlsx") as xl:
+        df.to_excel(xl, sheet_name=f"Barrido_{paso}h", index=False)
+        explicacion.to_excel(xl, sheet_name="Explicacion", index=False)
+
+# =============================================================================
 # BLOQUE 2: FACTORIAL COMPLETO (CAPACIDAD x CV x CORRELACIÓN INTRA-PERÍODO)
 # =============================================================================
 
@@ -720,6 +778,8 @@ if __name__ == "__main__":
     modo = sys.argv[1] if len(sys.argv) > 1 else "todos"
     if modo in ("capacidad", "todos"):
         exp_diagnostico_capacidad(data)
+    if modo in ("barrido", "todos"):
+        exp_barrido_capacidad(data)
     if modo in ("factorial", "todos"):
         exp_factorial_completo(data)
     if modo in ("etiquetas", "todos"):
