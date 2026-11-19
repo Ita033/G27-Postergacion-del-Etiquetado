@@ -16,6 +16,7 @@ Uso desde la raíz del repo:
   python analisis.py benchmarks   -> solo Híbrido Realista (MTS+MTO) y VMS
   python analisis.py whatif       -> solo costos (C_bbl, C_sb), doble manejo y borde t=3
   python analisis.py computo      -> solo escalamiento de tiempos de cómputo
+  python analisis.py computo_v2   -> solo escalamiento de tiempos de computo y de número de SKUs
 """
 
 import os
@@ -338,7 +339,7 @@ def imprimir_tabla(titulo, df):
 # =============================================================================
 
 def exp_diagnostico_capacidad(data):
-    print("\n[1/6] Diagnóstico de Capacidad y Saturación Real...")
+    print("\n[1/7] Diagnóstico de Capacidad y Saturación Real...")
     filas_anexo = []
     for K in [21, 42, 63, 84]:
         dk = clonar_datos(data, capacidad_horas=K)
@@ -453,7 +454,7 @@ def exp_barrido_capacidad(data, paso=3):
 # =============================================================================
 
 def exp_factorial_completo(data):
-    print("\n[2/6] Factorial Completo 3x3x3 (Capacidad x CV x Correlación intra-período)...")
+    print("\n[2/7] Factorial Completo 3x3x3 (Capacidad x CV x Correlación intra-período)...")
     corr_rows = []
     pares = [((1, 1), (1, 2)), ((1, 1), (1, 3)), ((1, 2), (1, 3)), ((2, 1), (2, 2))]
     for tipo_corr, d_base in [
@@ -510,7 +511,7 @@ def exp_factorial_completo(data):
 # =============================================================================
 
 def exp_etiquetas_por_capacidad(data):
-    print("\n[3/6] Postergación Parcial (PL=0,2,3,4,5) en K=84h, 63h y 42h + Tasa por SKU...")
+    print("\n[3/7] Postergación Parcial (PL=0,2,3,4,5) en K=84h, 63h y 42h + Tasa por SKU...")
     opciones_por_vino = []
     for i in data['vinos']:
         prods = [(i, j) for j in data['etiquetas_por_vino'][i]]
@@ -562,7 +563,7 @@ def exp_etiquetas_por_capacidad(data):
 # =============================================================================
 
 def exp_benchmarks_avanzados(data):
-    print("\n[4/6] Benchmarks Avanzados (Caso Base Híbrido MTS+MTO y Valor Multietapa VMS)...")
+    print("\n[4/7] Benchmarks Avanzados (Caso Base Híbrido MTS+MTO y Valor Multietapa VMS)...")
     filas = []
     for K in [42, 63, 84]:
         dk = clonar_datos(data, capacidad_horas=K)
@@ -617,7 +618,7 @@ def exp_benchmarks_avanzados(data):
 # =============================================================================
 
 def exp_whatif_costos_y_borde(data):
-    print("\n[5/6] Análisis Hipotéticos (C_bbl, C_sb=15, Doble Manejo y Valor Terminal)...")
+    print("\n[5/7] Análisis Hipotéticos (C_bbl, C_sb=15, Doble Manejo y Valor Terminal)...")
     filas = []
 
     def registrar(grupo, escenario, d_mod, ajuste_obj_fn=None):
@@ -684,30 +685,41 @@ def generar_instancia_sintetica(data_base, T_periodos, n_vinos, etiq_por_vino, s
     etiquetas = {i: list(range(1, etiq_por_vino + 1)) for i in vinos}
     productos = [(i, j) for i in vinos for j in etiquetas[i]]
 
-    nodos, antecesores, probabilidades, periodos_nodo = [], {}, {}, {}
+    # Regla del árbol original P12 (Anexo A):
+    # - Nodo "Media" se ramifica en 3: Alta (0.3), Media (0.4), Baja (0.3)
+    # - Nodo "Alta"  se ramifica en 2: Alta (0.7), Media (0.3) (no pasa directo a Baja)
+    # - Nodo "Baja"  se ramifica en 2: Media (0.6), Baja (0.4) (no pasa directo a Alta)
+    transiciones = {
+        "Raiz":  [("Media", 1.0)],
+        "Alta":  [("Alta", 0.7), ("Media", 0.3)],
+        "Media": [("Alta", 1.0 / 3.0), ("Media", 1.0 / 3.0), ("Baja", 1.0 / 3.0)],
+        "Baja":  [("Media", 0.6), ("Baja", 0.4)],
+    }
+
+    nodos, antecesores, probabilidades, periodos_nodo, estados_demanda = [], {}, {}, {}, {}
     nodo_id = 1
-    nivel_anterior = [(0, 1.0)]
+    nivel_anterior = [(0, 1.0, "Raiz")]
     for t in range(1, T_periodos + 1):
         nivel_actual = []
-        ramas = [1.0] if t == 1 else [0.3, 0.4, 0.3]
-        for ant_id, p_ant in nivel_anterior:
-            for p_rama in ramas:
+        for ant_id, p_ant, est_ant in nivel_anterior:
+            ramas = transiciones[est_ant]
+            for est_hijo, p_rama in ramas:
                 nodos.append(nodo_id)
                 antecesores[nodo_id] = ant_id
                 probabilidades[nodo_id] = p_ant * p_rama
                 periodos_nodo[nodo_id] = t
-                nivel_actual.append((nodo_id, p_ant * p_rama))
+                estados_demanda[nodo_id] = est_hijo
+                nivel_actual.append((nodo_id, p_ant * p_rama, est_hijo))
                 nodo_id += 1
         nivel_anterior = nivel_actual
 
-    factor_escala = len(productos) / 5.0
+    mult_estado = {"Alta": 1.40, "Media": 1.00, "Baja": 0.65}
     demandas = {}
     for (i, j) in productos:
         base_mu = 20000.0 + rng.uniform(-2500, 2500)
         for n in nodos:
-            t = periodos_nodo[n]
-            mult = 1.0 if t == 1 else rng.choice([0.65, 1.0, 1.40])
-            demandas[(i, j, n)] = base_mu * mult
+            est_n = estados_demanda[n]
+            demandas[(i, j, n)] = base_mu * mult_estado[est_n]
 
     return clonar_datos(
         data_base,
@@ -718,12 +730,12 @@ def generar_instancia_sintetica(data_base, T_periodos, n_vinos, etiq_por_vino, s
         probabilidades=probabilidades,
         periodos_nodo=periodos_nodo,
         demandas=demandas,
-        capacidad_horas=data_base['capacidad_horas'] * factor_escala,
+        capacidad_horas=data_base['capacidad_horas'],
     )
 
 
 def exp_escalamiento_computacional(data):
-    print("\n[6/6] Simulación de Escalamiento Computacional (T períodos x |P| productos)...")
+    print("\n[6/7] Simulación de Escalamiento Computacional (T períodos x |P| productos)...")
     configs = [
         (3, 2, 3),   # T=3 (13 nodos), 6 productos
         (3, 3, 3),   # T=3 (13 nodos), 9 productos
@@ -743,7 +755,8 @@ def exp_escalamiento_computacional(data):
             m, _ = build_base_model(d_sint)
         t_build = time.perf_counter() - t0
 
-        m.setParam("TimeLimit", 120.0)
+        m.setParam("TimeLimit", 300.0)
+        m.setParam("MIPGap", 0.005)
         m.optimize()
 
         filas.append({
@@ -764,6 +777,219 @@ def exp_escalamiento_computacional(data):
     df_comp = pd.DataFrame(filas)
     imprimir_tabla("6. ESCALAMIENTO COMPUTACIONAL (PARA JUSTIFICACIÓN DE PILOTO)", df_comp)
     df_comp.to_excel("out_6_escalamiento_computacional.xlsx", index=False)
+
+
+# =============================================================================
+# BLOQUE 7: ESCALAMIENTO COMPUTACIONAL REALISTA (INTEGRADO DESDE analisis_v2.py)
+# =============================================================================
+
+def generar_instancia_escalada(
+    data_base,
+    T_periodos,
+    n_vinos,
+    etiq_por_vino,
+    horas_periodo=84.0,
+    seed=42,
+):
+    """
+    Genera una instancia sintética realista ajustando:
+      - T_periodos         : cantidad de períodos en el horizonte (ej. 3..12 meses)
+      - n_vinos            : número de vinos base
+      - etiq_por_vino      : número de etiquetas por vino (|P| = n_vinos * etiq_por_vino)
+      - horas_periodo      : capacidad disponible por período en horas (84 h = 1 sem, 360 h = 1 mes)
+    """
+    rng = random.Random(seed)
+    vinos = list(range(1, n_vinos + 1))
+    etiquetas = {i: list(range(1, etiq_por_vino + 1)) for i in vinos}
+    productos = [(i, j) for i in vinos for j in etiquetas[i]]
+    n_skus = len(productos)
+
+    # -------------------------------------------------------------------------
+    # A. Construcción del árbol estocástico de escenarios (Regla de transición P12)
+    # -------------------------------------------------------------------------
+    # Regla del modelo original (Anexo A):
+    # - Un nodo "Media" se ramifica en 3: "Alta" (0.3), "Media" (0.4), "Baja" (0.3)
+    # - Un nodo "Alta"  se ramifica en 2: "Alta" (0.7), "Media" (0.3) -> no salta a Baja
+    # - Un nodo "Baja"  se ramifica en 2: "Media" (0.6), "Baja" (0.4) -> no salta a Alta
+    TRANSICIONES = {
+        "Raiz":  [("Media", 1.0)],
+        "Alta":  [("Alta", 0.7), ("Media", 0.3)],
+        "Media": [("Alta", 0.3), ("Media", 0.4), ("Baja", 0.3)],
+        "Baja":  [("Media", 0.6), ("Baja", 0.4)],
+    }
+    
+
+    nodos, antecesores, probabilidades, periodos_nodo, estados_demanda = [], {}, {}, {}, {}
+    nodo_id = 1
+    nivel_anterior = [(0, 1.0, "Raiz")]
+
+    for t in range(1, T_periodos + 1):
+        nivel_actual = []
+        for ant_id, p_ant, est_ant in nivel_anterior:
+            ramas = TRANSICIONES[est_ant]
+
+            for est_hijo, p_rama in ramas:
+                nodos.append(nodo_id)
+                antecesores[nodo_id] = ant_id
+                probabilidades[nodo_id] = p_ant * p_rama
+                periodos_nodo[nodo_id] = t
+                estados_demanda[nodo_id] = est_hijo
+                nivel_actual.append((nodo_id, p_ant * p_rama, est_hijo))
+                nodo_id += 1
+        nivel_anterior = nivel_actual
+
+    # -------------------------------------------------------------------------
+    # B. Escalamiento coherente de demanda, capacidad (horas) y estanques
+    # -------------------------------------------------------------------------
+    # En el caso base (5 SKUs, 84 h/semana), cada SKU demanda ~20.000 bot/sem
+    # (~100.000 bot totales por semana en la línea).
+    # Si el período dura `horas_periodo` (ej. 84 h en 1 semana), el volumen total
+    # del período escala por (horas_periodo / 84.0) y se reparte entre los |P| SKUs,
+    # ajustando los tiempos de set-up cuando hay muchos SKUs para mantener la línea factible.
+    factor_tiempo = horas_periodo / 84.0
+    demanda_total_periodo = 100000.0 * factor_tiempo
+    demanda_media_por_sku = demanda_total_periodo / n_skus
+
+    mult_por_estado = {"Alta": 1.35, "Media": 1.00, "Baja": 0.65}
+    demandas = {}
+    for (i, j) in productos:
+        base_mu = demanda_media_por_sku * rng.uniform(0.85, 1.15)
+        for n in nodos:
+            est_n = estados_demanda[n]
+            ruido = 1.0 if periodos_nodo[n] == 1 else rng.uniform(0.92, 1.08)
+            demandas[(i, j, n)] = base_mu * mult_por_estado[est_n] * ruido
+
+    # Escalar estanques disponibles proporcionalmente a la duración del período
+    estanques_escalados = max(20, int(round(data_base['estanques_disp'] * factor_tiempo)))
+
+    # Escalar tiempos de set-up unitarios de forma inversamente proporcional al tamaño
+    # de lote por SKU cuando el portafolio crece a 60 o 600 SKUs en la misma línea
+    escala_lote = 5.0 / n_skus
+    t_zb_esc = data_base['t_zb'] * min(1.0, escala_lote * 2.0)
+    t_zbl_esc = data_base['t_zbl'] * min(1.0, escala_lote * 2.0)
+    t_zl_esc = data_base['t_zl'] * min(1.0, escala_lote * 2.0)
+
+    return clonar_datos(
+        data_base,
+        vinos=vinos,
+        etiquetas_por_vino=etiquetas,
+        nodos=nodos,
+        antecesores=antecesores,
+        probabilidades=probabilidades,
+        periodos_nodo=periodos_nodo,
+        estados_demanda=estados_demanda,
+        demandas=demandas,
+        capacidad_horas=float(horas_periodo),
+        periodos_horizonte=T_periodos,
+        estanques_disp=estanques_escalados,
+        t_zb=t_zb_esc,
+        t_zbl=t_zbl_esc,
+        t_zl=t_zl_esc,
+    )
+
+
+def correr_escalamiento_v2(
+    data,
+    time_limit_por_corrida=1800.0,
+    archivo_salida="out_6_v2_escalamiento_realista.xlsx",
+):
+    # 1. Los 3 tamaños de portafolio solicitados: 6, 30 y 150 SKUs
+    portafolios = [
+        (2, 3, "6 SKUs (2V x 3E)"),
+        (5, 6, "30 SKUs (5V x 6E)"),
+        (10, 15, "150 SKUs (10V x 15E)"),
+    ]
+
+    # 2. El régimen temporales solicitados:
+    #    - Semanal (84 h/período): T = 3 hasta 8 períodos de 1 semana (2 meses)
+    regimenes_horizonte = (
+        [("Semanal (1 sem = 84h)", 84.0, T, f"{T} sem") for T in range(3,9)]
+    )
+
+    filas = []
+    total_corridas = len(portafolios) * len(regimenes_horizonte)
+    idx_corrida = 0
+
+    print("\n" + "=" * 105)
+    print(" INICIANDO ESCALAMIENTO COMPUTACIONAL REALISTA (6, 30 y 150 SKUs | Semanal 84h)")
+    print("=" * 105)
+
+    for nv, ne, etiqueta_sku in portafolios:
+        n_skus = nv * ne
+        for nombre_regimen, horas_k, T, desc_horizonte in regimenes_horizonte:
+            idx_corrida += 1
+            d_sint = generar_instancia_escalada(
+                data_base=data,
+                T_periodos=T,
+                n_vinos=nv,
+                etiq_por_vino=ne,
+                horas_periodo=horas_k,
+            )
+
+            t0 = time.perf_counter()
+            with contextlib.redirect_stdout(io.StringIO()):
+                m, _ = build_base_model(d_sint)
+            t_build = time.perf_counter() - t0
+
+            m.setParam("TimeLimit", time_limit_por_corrida)
+            # MIPGap de 0.5% para todas las instancias
+            m.setParam("MIPGap", 0.005)
+            m.optimize()
+
+            gap_pct = 100.0 * m.MIPGap if m.SolCount > 0 else None
+            estado = (
+                "Óptimo"
+                if m.Status == GRB.OPTIMAL
+                else ("Factible (TimeLimit)" if m.SolCount > 0 else f"Sin sol ({m.Status})")
+            )
+
+            fila = {
+                'Portafolio': etiqueta_sku,
+                '|P| (SKUs)': n_skus,
+                'Vinos': nv,
+                'Etiq/Vino': ne,
+                'Régimen': nombre_regimen,
+                'Horizonte': desc_horizonte,
+                'T (períodos)': T,
+                'K (h/período)': horas_k,
+                'Horas Totales Horizonte': T * horas_k,
+                'Nodos Árbol': len(d_sint['nodos']),
+                'Vars Totales': m.NumVars,
+                'Vars Binarias': m.NumBinVars,
+                'Restricciones': m.NumConstrs,
+                'Build (s)': round(t_build, 4),
+                'Solver Gurobi (s)': round(m.Runtime, 4),
+                'Tiempo Total (s)': round(t_build + m.Runtime, 4),
+                'MIPGap (%)': round(gap_pct, 4) if gap_pct is not None else None,
+                'Estado': estado,
+            }
+            filas.append(fila)
+
+            print(
+                f"[{idx_corrida:02d}/{total_corridas}] {etiqueta_sku:<21} | {desc_horizonte:<6} "
+                f"(K={int(horas_k):3d}h, Nodos={len(d_sint['nodos']):4d}) -> "
+                f"Vars={m.NumVars:10,d} | Build={t_build:6.2f}s | MIPGap={round(gap_pct, 4) if gap_pct is not None else 0}% | Gurobi={m.Runtime:7.2f}s | {estado}"
+            )
+
+            # Guardar avance incremental en Excel tras cada corrida
+            df_parcial = pd.DataFrame(filas)
+            df_parcial.to_excel(archivo_salida, index=False)
+            
+
+    df_final = pd.DataFrame(filas)
+    print("\n" + "=" * 105)
+    print(f" ESCALAMIENTO FINALIZADO. Resultados guardados en: {archivo_salida}")
+    print("=" * 105)
+    return df_final
+
+
+def exp_escalamiento_computacional_2(data):
+    print("\n[7/7] Simulación de Escalamiento Computacional 2 (T períodos x |P| productos)...")
+    return correr_escalamiento_v2(
+        data,
+        time_limit_por_corrida=2000.0,
+        archivo_salida="out_7_escalamiento_realista.xlsx",
+    )
 
 
 # =============================================================================
@@ -790,3 +1016,5 @@ if __name__ == "__main__":
         exp_whatif_costos_y_borde(data)
     if modo in ("computo", "todos"):
         exp_escalamiento_computacional(data)
+    if modo in ("computo_2", "todos"):
+        exp_escalamiento_computacional_2(data)
