@@ -243,9 +243,9 @@ plt.savefig(os.path.join(CARPETA_SALIDA, "fig3_heatmap_factorial.png"), bbox_inc
 plt.close()
 
 # ==============================================================================
-# GRÁFICO 4: ESCALAMIENTO REALISTA DESDE out_6_v2_escalamiento_realista.xlsx
+# GRÁFICO 4: ESCALAMIENTO REALISTA DESDE out_7_escalamiento_realista.xlsx
 # ==============================================================================
-f_out6_v2 = os.path.join(RUTA_EXCEL, "out_6_v2_escalamiento_realista.xlsx")
+f_out6_v2 = os.path.join(RUTA_EXCEL, "out_7_escalamiento_realista.xlsx")
 if os.path.exists(f_out6_v2):
     df_v2 = pd.read_excel(f_out6_v2)
     df_v2 = df_v2.sort_values(by=["|P| (SKUs)", "T (períodos)"])

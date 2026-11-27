@@ -692,7 +692,7 @@ def generar_instancia_sintetica(data_base, T_periodos, n_vinos, etiq_por_vino, s
     transiciones = {
         "Raiz":  [("Media", 1.0)],
         "Alta":  [("Alta", 0.7), ("Media", 0.3)],
-        "Media": [("Alta", 1.0 / 3.0), ("Media", 1.0 / 3.0), ("Baja", 1.0 / 3.0)],
+        "Media": [("Alta", 0.3), ("Media", 0.4), ("Baja", 0.3)],
         "Baja":  [("Media", 0.6), ("Baja", 0.4)],
     }
 
@@ -1016,5 +1016,10 @@ if __name__ == "__main__":
         exp_whatif_costos_y_borde(data)
     if modo in ("computo", "todos"):
         exp_escalamiento_computacional(data)
-    if modo in ("computo_2", "todos"):
+    if modo in ("computo_v2"):
         exp_escalamiento_computacional_2(data)
+
+# =============================================================================
+# OJO: Si se quiere correr el escalamiento más realista se debe ejecutar si o si
+#      python analisis.py computo_v2
+# =============================================================================
