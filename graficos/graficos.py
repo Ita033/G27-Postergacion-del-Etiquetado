@@ -8,8 +8,9 @@ from matplotlib.colors import LinearSegmentedColormap
 # ==============================================================================
 # CONFIGURACIÓN DE RUTAS Y ESTILO VISUAL (Paleta Burdeo / Dorado de la PPT)
 # ==============================================================================
-RUTA_EXCEL = "."
-CARPETA_SALIDA = "graficos_pedro_nico"
+BASE = os.path.dirname(os.path.abspath(__file__))
+RUTA_EXCEL = os.path.dirname(BASE)
+CARPETA_SALIDA = os.path.join(BASE, "presentacion")
 os.makedirs(CARPETA_SALIDA, exist_ok=True)
 
 BURDEO = "#5C1622"
@@ -30,15 +31,11 @@ plt.rcParams.update({
 f_out1 = os.path.join(RUTA_EXCEL, "out_1_capacidad_y_saturacion.xlsx")
 f_out2 = os.path.join(RUTA_EXCEL, "out_2_factorial_K_CV_Corr.xlsx")
 
-xl1 = pd.ExcelFile(f_out1)
-hoja_barrido = next(s for s in xl1.sheet_names if "barrido" in s.lower() or "fino" in s.lower())
-hoja_diag = next((s for s in xl1.sheet_names if s != hoja_barrido), hoja_barrido)
-
-df_barrido = pd.read_excel(xl1, sheet_name=hoja_barrido)
 f_out1b = os.path.join(RUTA_EXCEL, "out_1b_barrido_capacidad.xlsx")
-if os.path.exists(f_out1b):  # barrido cada 3 h (python analisis.py barrido)
-    df_barrido = pd.read_excel(f_out1b)
-df_diag = pd.read_excel(xl1, sheet_name=hoja_diag)
+df_barrido = pd.read_excel(f_out1b, sheet_name="Barrido_3h").sort_values("K (h)")
+if df_barrido["K (h)"].tolist() != list(range(21, 85, 3)):
+    raise ValueError("Se requiere el barrido de 21 a 84 h cada 3 h: ejecuta python analisis.py barrido.")
+df_diag = pd.read_excel(f_out1, sheet_name="Niveles_Anexo_A")
 
 xl2 = pd.ExcelFile(f_out2)
 hoja_fact = next((s for s in xl2.sheet_names if "fact" in s.lower() or "27" in s), xl2.sheet_names[0])
@@ -241,5 +238,125 @@ cbar.ax.yaxis.set_major_formatter(mtick.PercentFormatter())
 
 plt.savefig(os.path.join(CARPETA_SALIDA, "fig3_heatmap_factorial.png"), bbox_inches="tight")
 plt.close()
+
+# ==============================================================================
+# GRÁFICO 4: ESCALAMIENTO (Figura D.5 del informe)
+# Lee out_7_escalamiento_realista.xlsx, que genera: python escalamiento.py
+# Si el Excel no existe, este gráfico se omite.
+# ==============================================================================
+f_out7 = os.path.join(RUTA_EXCEL, "out_7_escalamiento_realista.xlsx")
+if os.path.exists(f_out7):
+    df_v2 = pd.read_excel(f_out7)
+    df_v2 = df_v2.sort_values(by=["|P| (SKUs)", "T (períodos)"])
+
+    # Eje X: Horizontes T presentes en el archivo y sus nodos del árbol
+    t_unicos = sorted(df_v2["T (períodos)"].unique())
+    nodos_por_t = [
+        int(df_v2[df_v2["T (períodos)"] == t]["Nodos Árbol"].iloc[0])
+        for t in t_unicos
+    ]
+
+    fig, ax = plt.subplots(figsize=(10.0, 4.9))
+
+    # Sombreado de la ventana operativa recomendada para el Piloto (T = 3 a 4 semanas)
+    ax.axvspan(2.8, 4.2, color="#E8D8C8", alpha=0.42, zorder=0)
+    ax.text(
+        3.5, 1380,
+        "Ventana Piloto (T = 3 a 4 sem)\n• 6 SKUs: 0,05 – 0,07 s\n• 30 SKUs: 0,24 – 0,61 s\n• 150 SKUs: 1,60 – 4,24 s",
+        ha="center", va="top", fontsize=8.5, fontweight="bold", color=BURDEO,
+        bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor=BURDEO, alpha=0.94),
+    )
+
+    # Estilos para cada portafolio
+    estilos_sku = {
+        150: (BURDEO, "o", 2.8, "150 SKUs (10 vinos × 15 etiq.)"),
+        30:  (DORADO, "s", 2.6, "30 SKUs (5 vinos × 6 etiq.)"),
+        6:   (GRIS_OSCURO, "^", 2.4, "6 SKUs (2 vinos × 3 etiq.)"),
+    }
+
+    for skus_val in sorted(df_v2["|P| (SKUs)"].unique(), reverse=True):
+        sub = df_v2[df_v2["|P| (SKUs)"] == skus_val].sort_values(by="T (períodos)")
+        color_c, marker_c, lw_c, label_c = estilos_sku.get(
+            int(skus_val),
+            (BURDEO, "o", 2.5, str(sub["Portafolio"].iloc[0])),
+        )
+        t_vals = sub["T (períodos)"].values
+        y_vals = sub["Tiempo Total (s)"].values
+        ax.plot(
+            t_vals, y_vals, color=color_c, marker=marker_c,
+            linewidth=lw_c, markersize=6.8, label=label_c, zorder=4,
+        )
+
+    # Anotaciones de los puntos clave medidos en el Excel
+    sub_150 = df_v2[df_v2["|P| (SKUs)"] == 150].set_index("T (períodos)")
+    sub_30 = df_v2[df_v2["|P| (SKUs)"] == 30].set_index("T (períodos)")
+    sub_6 = df_v2[df_v2["|P| (SKUs)"] == 6].set_index("T (períodos)")
+
+    if 8 in sub_6.index:
+        v6_8 = sub_6.loc[8, "Tiempo Total (s)"]
+        ax.annotate(
+            f"6 SKUs (T=8): solo {v6_8:.1f} s".replace(".", ","),
+            xy=(8, v6_8), xytext=(7.3, 230),
+            arrowprops=dict(arrowstyle="->", color=GRIS_OSCURO, lw=1.3),
+            ha="center", fontsize=8.3, fontweight="bold", color=GRIS_OSCURO,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor=GRIS_OSCURO, alpha=0.96),
+            zorder=10,
+        )
+    
+    if 8 in sub_30.index:
+        v30_8 = sub_30.loc[8, "Tiempo Total (s)"]
+        ax.annotate(
+            f"30 SKUs (T=8): solo {v30_8:.1f} s".replace(".", ","),
+            xy=(8, v30_8), xytext=(7.8, 600),
+            arrowprops=dict(arrowstyle="->", color=DORADO, lw=1.3),
+            ha="center", fontsize=8.4, fontweight="bold", color=DORADO,
+            bbox=dict(boxstyle="round,pad=0.28", facecolor="white", edgecolor=DORADO, alpha=0.96),
+            zorder=10,
+        )
+
+    if 8 in sub_150.index:
+        v150_8 = sub_150.loc[8, "Tiempo Total (s)"]
+        ax.annotate(
+            f"150 SKUs (T=8): sobrepasa el TimeLimit de\n30 min solo con Gap de 0,67%".replace(".", ","),
+            xy=(8, v150_8), xytext=(5.8, 1100),
+            arrowprops=dict(arrowstyle="->", color=BURDEO, lw=1.3),
+            ha="center", fontsize=8.4, fontweight="bold", color=BURDEO,
+            bbox=dict(boxstyle="round,pad=0.28", facecolor="white", edgecolor=BURDEO, alpha=0.96),
+            zorder=10,
+        )
+
+    ax.set_title(
+        "Escalamiento computacional en Gurobi según Horizonte Semanal (T) y Portafolio (SKUs)",
+        fontsize=12.0, fontweight="bold", color=BURDEO, pad=36,
+    )
+    ax.set_xlabel(
+        "Horizonte de planificación T (semanas de 84 h) y nodos del árbol estocástico",
+        fontsize=10.2, fontweight="bold", color=GRIS_OSCURO,
+    )
+    ax.set_ylabel(
+        "Tiempo total de cómputo en Gurobi (segundos)",
+        fontsize=10.2, fontweight="bold", color=BURDEO,
+    )
+
+    etiquetas_x_v2 = [
+        f"T = {t} sem\n({n:,} nodos)".replace(",", ".")
+        for t, n in zip(t_unicos, nodos_por_t)
+    ]
+    ax.set_xticks(t_unicos)
+    ax.set_xticklabels(etiquetas_x_v2, fontsize=9.0, fontweight="bold")
+    ax.set_xlim(min(t_unicos) - 0.3, max(t_unicos) + 0.3)
+    ax.set_ylim(-40, 2080)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.legend(
+        loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=3,
+        frameon=True, facecolor="white", framealpha=0.95, fontsize=8.1,
+    )
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(CARPETA_SALIDA, "fig4_escalamiento_realista_v2.png"), bbox_inches="tight")
+    plt.close()
 
 print(f"Gráficos generados exitosamente en la carpeta: '{CARPETA_SALIDA}/'")

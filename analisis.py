@@ -1,21 +1,18 @@
-"""
-analisis.py
-===========
-Suite autocontenida de análisis de sensibilidad, benchmarks y experimentos
-hipotéticos (What-If) para la Entrega Final (Grupo 27).
+"""Análisis de sensibilidad y comparaciones del proyecto Capstone G27.
 
-No modifica data_loader.py, core_model.py, policies.py ni main.py.
-Imprime todas las tablas en consola y guarda respaldos en Excel (out_1 a out_6).
+Los análisis usan el modelo base y agregan cambios de datos, políticas o costos
+sin modificar los módulos de src ni main.py. Imprimen tablas y guardan siete
+archivos Excel (out_1, out_1b y out_2 a out_6).
 
-Uso desde la raíz del repo:
-  python analisis.py              -> corre los 6 bloques completos
-  python analisis.py capacidad    -> solo diagnóstico de saturación y K
-  python analisis.py barrido      -> solo barrido de capacidad cada 3 h (21..84)
-  python analisis.py factorial    -> solo diseño K x CV x Correlación
-  python analisis.py etiquetas    -> solo postergación parcial en K=84,63,42
-  python analisis.py benchmarks   -> solo Híbrido Realista (MTS+MTO) y VMS
-  python analisis.py whatif       -> solo costos (C_bbl, C_sb), doble manejo y borde t=3
-  python analisis.py computo      -> solo escalamiento de tiempos de cómputo
+Ejecutar desde la carpeta del proyecto:
+    python analisis.py              -> todos los análisis
+    python analisis.py capacidad    -> capacidad y saturación por nodo
+    python analisis.py barrido      -> capacidad cada 3 h, de 21 a 84 h
+    python analisis.py factorial    -> capacidad, CV y correlación
+    python analisis.py etiquetas    -> postergación parcial en K=84,63,42
+    python analisis.py benchmarks   -> políticas MTS, MTO, híbrida y estática
+    python analisis.py whatif       -> costos, doble manejo y valor terminal
+    python analisis.py computo      -> escalamiento de tiempos de cómputo
 """
 
 import os
@@ -36,9 +33,7 @@ from src.core_model import build_base_model
 from src.policies import apply_mts_policy, apply_mto_policy
 
 
-# =============================================================================
-# 1. UTILIDADES SOBRE DATOS Y ESTADÍSTICA INTRA-PERÍODO
-# =============================================================================
+# Datos y estadísticas de demanda
 
 def obtener_productos(data):
     return [(i, j) for i in data['vinos'] for j in data['etiquetas_por_vino'][i]]
@@ -49,6 +44,7 @@ def nodos_del_periodo(data, t):
 
 
 def media_y_desviacion(data, producto, t):
+    """Media y desviación ponderadas por las probabilidades del período."""
     i, j = producto
     prob = data['probabilidades']
     ns = nodos_del_periodo(data, t)
@@ -64,11 +60,17 @@ def correlacion_intra_periodo(data, prod1, prod2, t):
     mu2, sd2 = media_y_desviacion(data, prod2, t)
     if sd1 == 0 or sd2 == 0:
         return 0.0
-    cov = sum(prob[n] * (data['demandas'][(*prod1, n)] - mu1) * (data['demandas'][(*prod2, n)] - mu2) for n in ns)
+    cov = sum(
+        prob[n]
+        * (data['demandas'][(*prod1, n)] - mu1)
+        * (data['demandas'][(*prod2, n)] - mu2)
+        for n in ns
+    )
     return cov / (sd1 * sd2)
 
 
 def clonar_datos(data, **cambios):
+    """Copia los datos y la demanda, aplica cambios y recalcula las Big-M."""
     nuevo = dict(data)
     nuevo['demandas'] = dict(data['demandas'])
     nuevo.update(cambios)
@@ -80,6 +82,10 @@ def clonar_datos(data, **cambios):
 
 
 def datos_con_cv(data, cv):
+    """Escala las desviaciones respecto a la media y recorta demandas negativas.
+
+    Los períodos sin dispersión se mantienen sin cambios.
+    """
     nuevo = clonar_datos(data)
     for prod in obtener_productos(data):
         for t in set(data['periodos_nodo'].values()):
@@ -101,6 +107,7 @@ def _estandarizar(data, valores):
 
 
 def datos_con_correlacion(data, tipo):
+    """Construye demandas con patrones comunes o desfasados entre etiquetas."""
     nuevo = clonar_datos(data)
     productos = obtener_productos(data)
     prob = data['probabilidades']
@@ -126,12 +133,10 @@ def datos_con_correlacion(data, tipo):
     return nuevo
 
 
-# =============================================================================
-# 2. POLÍTICAS EXTERNAS (NO TOCAN src/policies.py NI src/core_model.py)
-# =============================================================================
+# Políticas y ajustes del objetivo para los análisis
 
 def politica_hibrida_mts_mto(model, vars_dict, data):
-    """Caso Base Híbrido Realista: cada SKU elige MTS o MTO sin stock (sin postergación)."""
+    """Permite elegir MTS o MTO sin stock por SKU, sin postergación."""
     w_b, w_l = vars_dict['w_b'], vars_dict['w_l']
     s_b, s_bl = vars_dict['s_b'], vars_dict['s_bl']
     nodos = data['nodos']
@@ -157,7 +162,7 @@ def politica_hibrida_mts_mto(model, vars_dict, data):
 
 
 def politica_estatica_twostage(model, vars_dict, data):
-    """Modelo Estático Two-Stage (plan fijo por período sin recurso adaptativo)."""
+    """Fija la producción y los set-ups por período entre escenarios."""
     w_b, z_b = vars_dict['w_b'], vars_dict['z_b']
     w_bl, z_bl = vars_dict['w_bl'], vars_dict['z_bl']
     w_l, z_l = vars_dict['w_l'], vars_dict['z_l']
@@ -185,7 +190,7 @@ def politica_estatica_twostage(model, vars_dict, data):
 
 
 def aplicar_valor_terminal_externo(model, vars_dict, data, rescate_wip=0.0, rescate_fg=0.0, multa_bo=0.0):
-    """Añade externamente valor residual de inventario y/o multa de cierre en t=T."""
+    """Agrega rescate de inventario y penalización de atrasos al cierre."""
     ultimo_t = max(data['periodos_nodo'].values())
     nodos_term = nodos_del_periodo(data, ultimo_t)
     prob = data['probabilidades']
@@ -205,11 +210,10 @@ def aplicar_valor_terminal_externo(model, vars_dict, data, rescate_wip=0.0, resc
     return model
 
 
-# =============================================================================
-# 3. RESOLVER Y CALCULAR KPIs COMPLETOS
-# =============================================================================
+# Resolución y cálculo de indicadores
 
-def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300):
+def resolver(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300):
+    """Construye y resuelve el modelo con la política y el ajuste indicados."""
     with contextlib.redirect_stdout(io.StringIO()):
         m, v = build_base_model(data)
         if politica_fn is not None:
@@ -219,11 +223,34 @@ def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300)
 
     m.setParam("TimeLimit", time_limit)
     m.optimize()
+    return m, v
 
+
+def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300):
+    """Devuelve los indicadores, el modelo y sus variables."""
+    m, v = resolver(data, politica_fn, ajuste_obj_fn, time_limit)
     if m.SolCount == 0:
         return None, m, v
+    return calcular_kpis(m, v, data), m, v
 
-    vinos, etiq = data['vinos'], data['etiquetas_por_vino']
+
+def horas_usadas(v, data, n):
+    """Suma las horas de producción y set-ups en el nodo n."""
+    vinos = data['vinos']
+    productos = obtener_productos(data)
+    return (
+        sum(data['t_wb'] * v['w_b'][i, n].X + data['t_zb'] * v['z_b'][i, n].X for i in vinos)
+        + sum(
+            data['t_wbl'] * v['w_bl'][i, j, n].X + data['t_zbl'] * v['z_bl'][i, j, n].X
+            + data['t_wl'] * v['w_l'][i, j, n].X + data['t_zl'] * v['z_l'][i, j, n].X
+            for i, j in productos
+        )
+    )
+
+
+def calcular_kpis(m, v, data):
+    """Calcula costos e indicadores a partir de una solución disponible."""
+    vinos = data['vinos']
     productos = obtener_productos(data)
     prob = data['probabilidades']
     periodos_nodo = data['periodos_nodo']
@@ -263,14 +290,7 @@ def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300)
         vol_fg += p * sum(v['s_bl'][i, j, n].X for i, j in productos)
         vol_bo += p * sum(v['b_bl'][i, j, n].X for i, j in productos)
 
-        h_n = (
-            sum(data['t_wb'] * v['w_b'][i, n].X + data['t_zb'] * v['z_b'][i, n].X for i in vinos)
-            + sum(
-                data['t_wbl'] * v['w_bl'][i, j, n].X + data['t_zbl'] * v['z_bl'][i, j, n].X
-                + data['t_wl'] * v['w_l'][i, j, n].X + data['t_zl'] * v['z_l'][i, j, n].X
-                for i, j in productos
-            )
-        )
+        h_n = horas_usadas(v, data, n)
         horas_esp += p * h_n
         u_n = h_n / K if K > 0 else 0.0
         if u_n >= util_max:
@@ -279,6 +299,7 @@ def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300)
         if K - h_n <= 1e-3:
             nodos_saturados += 1
 
+        # Servicio FIFO y postergación desde el período 2.
         if t >= 2:
             for (i, j) in productos:
                 d = data['demandas'][(i, j, n)]
@@ -322,7 +343,7 @@ def resolver_y_medir(data, politica_fn=None, ajuste_obj_fn=None, time_limit=300)
     for (i, j) in productos:
         kpis[f'Posterg. ({i},{j}) (%)'] = 100.0 * post_sku[(i, j)] / dem_sku[(i, j)] if dem_sku[(i, j)] > 0 else 0.0
 
-    return kpis, m, v
+    return kpis
 
 
 def imprimir_tabla(titulo, df):
@@ -333,12 +354,10 @@ def imprimir_tabla(titulo, df):
         print(df.to_string(index=False))
 
 
-# =============================================================================
-# BLOQUE 1: DIAGNÓSTICO DE CAPACIDAD Y SATURACIÓN REAL POR NODO
-# =============================================================================
+# Capacidad y saturación por nodo
 
 def exp_diagnostico_capacidad(data):
-    print("\n[1/6] Diagnóstico de Capacidad y Saturación Real...")
+    print("\nCapacidad y saturación por nodo...")
     filas_anexo = []
     for K in [21, 42, 63, 84]:
         dk = clonar_datos(data, capacidad_horas=K)
@@ -363,39 +382,15 @@ def exp_diagnostico_capacidad(data):
             'Nodos Sat MTS': k_mts['Nodos Saturados (#/11)'],
         })
 
-    filas_fino = []
-    for K in range(20, 88, 4):
-        dk = clonar_datos(data, capacidad_horas=K)
-        k_post, _, _ = resolver_y_medir(dk, None)
-        k_mts, _, _ = resolver_y_medir(dk, apply_mts_policy)
-        filas_fino.append({
-            'K (h)': K,
-            'Costo_Post': k_post['Costo Total ($)'],
-            'Costo_MTS': k_mts['Costo Total ($)'],
-            'Ahorro_MTS_pct': 100.0 * (k_mts['Costo Total ($)'] - k_post['Costo Total ($)']) / k_mts['Costo Total ($)'],
-            'Backlog_Post': k_post['Backorder Acum. (bot-per)'],
-            'Backlog_MTS': k_mts['Backorder Acum. (bot-per)'],
-            'Util_Prom_Post_pct': k_post['Utilización Promedio (%)'],
-            'Util_Max_Post_pct': k_post['Utilización Máxima (%)'],
-            'Nodos_Sat_Post': k_post['Nodos Saturados (#/11)'],
-            'Tasa_Post_pct': k_post['Tasa Postergación Global (%)'],
-        })
-
     df_anexo = pd.DataFrame(filas_anexo)
-    df_fino = pd.DataFrame(filas_fino)
-    imprimir_tabla("1A. DIAGNÓSTICO DE CAPACIDAD Y SATURACIÓN POR NODO (NIVELES ANEXO A)", df_anexo)
-    imprimir_tabla("1B. BARRIDO FINO DE CAPACIDAD (CADA 4 HORAS)", df_fino)
-
+    imprimir_tabla("DIAGNÓSTICO DE CAPACIDAD Y SATURACIÓN POR NODO (NIVELES ANEXO A)", df_anexo)
     with pd.ExcelWriter("out_1_capacidad_y_saturacion.xlsx") as xl:
         df_anexo.to_excel(xl, sheet_name="Niveles_Anexo_A", index=False)
-        df_fino.to_excel(xl, sheet_name="Barrido_Fino_4h", index=False)
 
 
-# =============================================================================
-# BLOQUE 1B (EXTRA): BARRIDO DE CAPACIDAD CADA 3 h (21, 24, ..., 84)
-# Incluye exactamente los niveles del Anexo A (21, 42, 63, 84) y permite ver
-# dónde cambia el régimen de la curva de ahorro. Lo usa graficos.py (fig. 1).
-# =============================================================================
+# Barrido de capacidad cada 3 h (21, 24, ..., 84).
+# Incluye los niveles del Anexo A (21, 42, 63, 84) y permite ver los cambios
+# de la curva de ahorro. Los scripts de graficos/ usan esta salida.
 
 def atrasos_por_periodo(data, v):
     """Botellas pendientes (esperadas) al cierre de cada período y botellas que
@@ -413,7 +408,7 @@ def atrasos_por_periodo(data, v):
 
 
 def exp_barrido_capacidad(data, paso=3):
-    print(f"\n[1B] Barrido de capacidad cada {paso} h...")
+    print(f"\nBarrido de capacidad cada {paso} h...")
     filas = []
     for K in range(21, 85, paso):
         dk = clonar_datos(data, capacidad_horas=K)
@@ -448,12 +443,10 @@ def exp_barrido_capacidad(data, paso=3):
         df.to_excel(xl, sheet_name=f"Barrido_{paso}h", index=False)
         explicacion.to_excel(xl, sheet_name="Explicacion", index=False)
 
-# =============================================================================
-# BLOQUE 2: FACTORIAL COMPLETO (CAPACIDAD x CV x CORRELACIÓN INTRA-PERÍODO)
-# =============================================================================
+# Análisis factorial: capacidad, CV y correlación
 
 def exp_factorial_completo(data):
-    print("\n[2/6] Factorial Completo 3x3x3 (Capacidad x CV x Correlación intra-período)...")
+    print("\nFactorial 3x3x3: capacidad, CV y correlación intra-período...")
     corr_rows = []
     pares = [((1, 1), (1, 2)), ((1, 1), (1, 3)), ((1, 2), (1, 3)), ((2, 1), (2, 2))]
     for tipo_corr, d_base in [
@@ -505,18 +498,25 @@ def exp_factorial_completo(data):
         df_corr.to_excel(xl, sheet_name="Verificacion_Correlaciones", index=False)
 
 
-# =============================================================================
-# BLOQUE 3: POSTERGACIÓN PARCIAL EN K=84h, 63h y 42h + TASA POR ETIQUETA
-# =============================================================================
+# Postergación parcial y tasa por etiqueta, en K=84,63,42
 
-def exp_etiquetas_por_capacidad(data):
-    print("\n[3/6] Postergación Parcial (PL=0,2,3,4,5) en K=84h, 63h y 42h + Tasa por SKU...")
+def combinaciones_validas(data):
+    """Combina cero o al menos dos etiquetas por vino para permitir postergación."""
     opciones_por_vino = []
     for i in data['vinos']:
         prods = [(i, j) for j in data['etiquetas_por_vino'][i]]
-        ops = [()] + [c for r in range(2, len(prods) + 1) for c in itertools.combinations(prods, r)]
+        ops = [()] + [
+            c
+            for r in range(2, len(prods) + 1)
+            for c in itertools.combinations(prods, r)
+        ]
         opciones_por_vino.append(ops)
-    combos = [sum(c, ()) for c in itertools.product(*opciones_por_vino)]
+    return [sum(c, ()) for c in itertools.product(*opciones_por_vino)]
+
+
+def exp_etiquetas_por_capacidad(data):
+    print("\nPostergación parcial (PL=0,2,3,4,5) en K=84,63,42 y tasa por SKU...")
+    combos = combinaciones_validas(data)
     productos = obtener_productos(data)
 
     filas = []
@@ -557,18 +557,17 @@ def exp_etiquetas_por_capacidad(data):
         df.to_excel(xl, sheet_name="Todas_Combinaciones", index=False)
 
 
-# =============================================================================
-# BLOQUE 4: BENCHMARKS AVANZADOS (HÍBRIDO REALISTA MTS+MTO Y VMS TWO-STAGE)
-# =============================================================================
+# Comparación con la política híbrida y el plan estático
 
 def exp_benchmarks_avanzados(data):
-    print("\n[4/6] Benchmarks Avanzados (Caso Base Híbrido MTS+MTO y Valor Multietapa VMS)...")
+    print("\nComparación de políticas: híbrida MTS+MTO y valor multietapa (VMS)...")
     filas = []
     for K in [42, 63, 84]:
         dk = clonar_datos(data, capacidad_horas=K)
         k_post, _, _ = resolver_y_medir(dk, None)
         k_mts, _, _ = resolver_y_medir(dk, apply_mts_policy)
         k_mto, _, _ = resolver_y_medir(dk, apply_mto_policy)
+        # Mantener el modelo híbrido vivo hasta leer las variables y_mts.
         k_hyb, m_hyb, v_hyb = resolver_y_medir(dk, politica_hibrida_mts_mto)
         k_2s, m_2s, _ = resolver_y_medir(dk, politica_estatica_twostage)
 
@@ -612,12 +611,10 @@ def exp_benchmarks_avanzados(data):
     df_bench.to_excel("out_4_benchmarks_hibrido_vms.xlsx", index=False)
 
 
-# =============================================================================
-# BLOQUE 5: ANÁLISIS HIPOTÉTICOS (COSTOS, DOBLE MANEJO Y VALOR TERMINAL t=3)
-# =============================================================================
+# Sensibilidad a costos, doble manejo y valor terminal
 
 def exp_whatif_costos_y_borde(data):
-    print("\n[5/6] Análisis Hipotéticos (C_bbl, C_sb=15, Doble Manejo y Valor Terminal)...")
+    print("\nSensibilidad a costos, doble manejo y valor terminal...")
     filas = []
 
     def registrar(grupo, escenario, d_mod, ajuste_obj_fn=None):
@@ -638,15 +635,15 @@ def exp_whatif_costos_y_borde(data):
             'Util Máx (%)': kp['Utilización Máxima (%)'],
         })
 
-    # 5A. Penalización por Backorder (C_bbl)
+    # Penalización por atrasos.
     for cbbl in [150, 750, 1500, 3000, 15000]:
         registrar("1. Multa Backorder", f"C_bbl = ${cbbl:,} ({cbbl//15}x FG)", clonar_datos(data, C_bbl=float(cbbl)))
 
-    # 5B. Diferencial de Bodega (C_sb = 15 aísla 100% el efecto Risk Pooling puro)
+    # Costo de almacenar WIP, hasta igualar el costo de producto terminado ($15).
     for csb in [5.0, 10.0, 12.5, 15.0]:
         registrar("2. Bodega WIP (C_sb)", f"C_sb = ${csb:.1f} (Dif ${15-csb:.1f})", clonar_datos(data, C_sb=csb))
 
-    # 5C. Fricción Doble Manipulación (Set-up de etiquetado t_zl y C_zl)
+    # Tiempo y costo del set-up de etiquetado.
     for mult in [1, 2, 4, 6]:
         registrar(
             "3. Doble Manejo",
@@ -654,7 +651,7 @@ def exp_whatif_costos_y_borde(data):
             clonar_datos(data, t_zl=0.5 * mult, C_zl=500.0 * mult),
         )
 
-    # 5D. Efecto de Borde / Valor Residual Terminal en t=3 (externo al modelo base)
+    # Rescate de inventario y penalización de atrasos al cierre de t=3.
     registrar("4. Efecto Borde t=3", "Sin valor terminal (Base)", data, ajuste_obj_fn=None)
     registrar(
         "4. Efecto Borde t=3",
@@ -674,9 +671,7 @@ def exp_whatif_costos_y_borde(data):
     df_wi.to_excel("out_5_whatif_costos_y_borde.xlsx", index=False)
 
 
-# =============================================================================
-# BLOQUE 6: SIMULACIÓN DE ESCALAMIENTO COMPUTACIONAL (PARA PILOTO)
-# =============================================================================
+# Escalamiento computacional con instancias sintéticas
 
 def generar_instancia_sintetica(data_base, T_periodos, n_vinos, etiq_por_vino, seed=42):
     rng = random.Random(seed)
@@ -723,7 +718,7 @@ def generar_instancia_sintetica(data_base, T_periodos, n_vinos, etiq_por_vino, s
 
 
 def exp_escalamiento_computacional(data):
-    print("\n[6/6] Simulación de Escalamiento Computacional (T períodos x |P| productos)...")
+    print("\nEscalamiento computacional: períodos y productos...")
     configs = [
         (3, 2, 3),   # T=3 (13 nodos), 6 productos
         (3, 3, 3),   # T=3 (13 nodos), 9 productos
@@ -765,10 +760,6 @@ def exp_escalamiento_computacional(data):
     imprimir_tabla("6. ESCALAMIENTO COMPUTACIONAL (PARA JUSTIFICACIÓN DE PILOTO)", df_comp)
     df_comp.to_excel("out_6_escalamiento_computacional.xlsx", index=False)
 
-
-# =============================================================================
-# MAIN
-# =============================================================================
 
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))

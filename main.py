@@ -3,7 +3,6 @@ from src.data_loader import load_data
 from src.core_model import build_base_model
 from src.policies import apply_mto_policy_varas, apply_mts_policy
 from src.kpi_calculator import extract_results
-from combinaciones_32 import analizar_combinaciones
 from src.replanificacion import correr_todos_los_caminos, mostrar_por_camino, comparar_con_modelo_completo
 
 
@@ -65,16 +64,6 @@ def main():
         # Opcional: Guardar el resultado a un CSV para usarlo en el informe LaTeX
         df_res.to_csv("resultados_comparativos.csv", index=False)
         print("\n(Resultados guardados exitosamente en 'resultados_comparativos.csv')")
-
-    # =========================================================================
-    # ANÁLISIS: ¿QUÉ ETIQUETAS CONVIENE POSTERGAR? (32 COMBINACIONES)
-    # =========================================================================
-    # Cada producto (vino, etiqueta) se puede postergar o no -> 2^5 = 32 corridas.
-    # La lógica está en combinaciones_32.py, acá solo la llamamos.
-    print("\n" + "="*70)
-    print(" ANÁLISIS: LAS 32 COMBINACIONES DE POSTERGACIÓN")
-    print("="*70)
-    analizar_combinaciones(data)
 
     # =========================================================================
     # RE-PLANIFICACIÓN PERÍODO A PERÍODO (HORIZONTE DECRECIENTE)

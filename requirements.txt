@@ -1,0 +1,6 @@
+# Python 3.11
+gurobipy==13.0.3
+pandas
+numpy
+openpyxl
+matplotlib
