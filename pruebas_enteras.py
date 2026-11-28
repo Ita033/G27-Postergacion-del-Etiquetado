@@ -1,11 +1,11 @@
 """
 pruebas_enteras.py
- 
+
 Prueba que salió en la reunión con el profe: en estricto rigor las botellas son
 enteras, pero dejarlas enteras puede hacer el modelo más lento. La idea es medir
 cuánto cambia el costo y el tiempo si las cantidades (w, s, b) son ENTERAS en vez
 de CONTINUAS, para justificar si podemos dejarlas continuas (y redondear después).
- 
+
 Para cada política (postergación, contra pedido y contra stock) resolvemos:
   1) el modelo como lo tenemos (cantidades continuas, set-ups binarios)
   2) el mismo modelo pero con w_b, w_bl, w_l, s_b, s_bl, b_bl enteras

@@ -1,118 +1,81 @@
 # G27-Postergacion-del-Etiquetado
 
-Modelo de Programación Estocástica Multietapa (MS-MIP) para evaluar políticas de postergación de etiquetado en una viña exportadora, desarrollado como Proyecto de Capstone (ICS2122).
+Modelo de programación estocástica multietapa (MS-MIP) para evaluar la **postergación del etiquetado** en una viña exportadora con demanda incierta. Proyecto Capstone ICS2122, Grupo 27.
 
-El modelo evalúa los beneficios de la **postergación del etiquetado** bajo incertidumbre en la demanda: se puede embotellar sin etiqueta (inventario WIP) y etiquetar recién cuando se conoce mejor la demanda de cada mercado. Se compara contra producir contra stock y contra pedido, siguiendo a Varas et al. (2018).
+---
+
+## Estructura del repositorio
+
+| Archivo | Qué hace |
+|---|---|
+| `src/data_loader.py` | Datos de la instancia P12 (Anexo A) escritos en el código. Calcula las probabilidades de los nodos y las cotas Big-M. No lee el Excel. |
+| `src/core_model.py` | Modelo base con postergación en Gurobi: balances de inventario sin etiqueta (WIP), terminado y atrasos, capacidad, estanques y set-ups. |
+| `src/policies.py` | Restricciones de los casos base: contra stock (MTS) y contra pedido sin stock (MTO). |
+| `src/kpi_calculator.py` | KPI de la comparación de políticas de `main.py`. |
+| `src/replanificacion.py` | Replanificación período a período en los 7 caminos del árbol (verificación de no anticipatividad). |
+| `main.py` | Resuelve las tres políticas y la replanificación por caminos. |
+| `pruebas_enteras.py` | Compara el modelo con cantidades continuas y enteras. |
+| `analisis.py` | Análisis de sensibilidad y comparaciones adicionales. |
+| `escalamiento.py` | Tiempos de resolución con 6, 30 y 150 etiquetas y horizontes de 3 a 8 semanas. |
+| `graficos/graficos_informe.py` | Figuras D.1 y D.2 del informe (PDF y PNG en `graficos/informe/`). |
+| `graficos/graficos.py` | Figuras de la presentación y Figura D.5 del informe (PNG en `graficos/presentacion/`). |
+| `data/P12 Anexo A Datos.xlsx` | Datos originales del Anexo A, como respaldo. |
+
+---
+
+## Políticas comparadas
+
+1. **Postergación (modelo base):** se puede embotellar sin etiqueta, guardar ese inventario y etiquetarlo después, cuando se conoce la demanda.
+2. **Contra stock (MTS):** no se posterga. Todo se embotella y etiqueta junto, y se puede guardar producto terminado.
+3. **Contra pedido sin stock (MTO):** no se posterga ni se guarda inventario entre períodos. Lo que no se cubre queda atrasado.
+
+`analisis.py` compara además con una política híbrida (cada etiqueta elige MTS o MTO) y con un plan estático (las mismas decisiones en todos los nodos de un período).
 
 ---
 
 ## Instalación
 
-Requiere **Python 3.10+** y una **licencia de Gurobi** (la académica sirve) configurada en el equipo.
+Se usó Python 3.11 y Gurobi 13.0.3, con licencia académica.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-`matplotlib` solo se usa para los gráficos de `analisis_resultados.py`. Sin él igual se generan todas las tablas.
-
----
-
-## Estructura del Repositorio
-
-```
-├── main.py                  # Pipeline principal (políticas + 32 combinaciones + re-planificación)
-├── combinaciones_32.py      # Ranking de qué etiquetas conviene postergar (2^5 = 32 corridas)
-├── pruebas_enteras.py       # Compara variables de cantidad continuas vs enteras
-├── analisis_resultados.py   # Tablas de detalle de los resultados (CSV + gráficos)
-├── requirements.txt
-├── data/
-│   └── P12 Anexo A Datos.xlsx   # Anexo A original (referencia; el código ya no lo lee)
-└── src/
-    ├── data_loader.py       # Datos de la instancia P12, escritos en el código
-    ├── core_model.py        # Formulación MS-MIP en Gurobi (modelo base = postergación)
-    ├── policies.py          # Restricciones de las políticas contra pedido y contra stock
-    ├── kpi_calculator.py    # KPIs esperados y desglose de producción por período
-    └── replanificacion.py   # Re-planificación período a período y chequeo de no anticipatividad
-```
-
-*   **`src/data_loader.py`**: Contiene los parámetros de la instancia P12 del Anexo A (productos, capacidad de 84 h, estanques, tiempos, costos, árbol de 11 nodos con probabilidades condicionales y demandas). Calcula las probabilidades incondicionales y las cotas Big-M, valida los datos y los entrega con `load_data()`. El Excel de `data/` se mantiene como respaldo, pero no se lee.
-*   **`src/core_model.py`**: `build_base_model(data)` arma el modelo base de **Programación Estocástica Multietapa (MS-MIP)**: balances de inventario WIP y producto terminado con atrasos, capacidad de la línea en horas, capacidad de estanques, activación de *set-ups* mediante *Big-M* y costo esperado ponderado por la probabilidad de cada nodo. El nodo 0 artificial fija las condiciones iniciales (o, al re-planificar, el estado con que cerró el período anterior).
-*   **`src/policies.py`**: Funciones que agregan restricciones al modelo base para representar las políticas alternativas (`apply_mto_policy`, `apply_mts_policy`).
-*   **`src/kpi_calculator.py`**: `extract_results` lee la solución de Gurobi y calcula costo, WIP, producto terminado, atrasos y *set-ups* esperados, además del tiempo de resolución.
-*   **`src/replanificacion.py`**: Recorre cada uno de los 7 caminos del árbol resolviendo el subárbol desde el nodo que ocurrió, con horizonte decreciente (3, 2 y 1 períodos), y compara el costo esperado con el del modelo completo.
-
----
-
-## Políticas de Producción Evaluadas
-
-1.  **Postergación (modelo base):**
-    Permite embotellar sin etiqueta (WIP) y etiquetar después desde ese inventario, además de producir acoplado. El modelo decide libremente cuándo embotellar y cuándo etiquetar.
-2.  **Contra Stock (MTS):**
-    Prohíbe el WIP y las operaciones de solo embotellar o solo etiquetar (`s_b = w_b = w_l = 0`). Todo se embotella y etiqueta acoplado y por adelantado, acumulando producto terminado para cubrir la demanda.
-3.  **Contra Pedido (MTO, Varas et al. 2018):**
-    Sin etiquetado separado (`z_l = 0`) y sin inventario de producto terminado (`s_bl = 0`). Como no puede sobrar nada, solo se produce lo que es seguro que se va a pedir y el resto queda como atraso que se cubre en la etapa siguiente.
-
----
-
 ## Ejecución
 
-Todos los scripts se corren desde la raíz del repositorio.
+Todos los comandos se ejecutan desde la raíz del proyecto.
 
-### Pipeline principal
+| Comando | Qué hace | Salida |
+|---|---|---|
+| `python main.py` | Compara las tres políticas y replanifica por caminos | `resultados_comparativos.csv`; la replanificación se muestra en consola |
+| `python pruebas_enteras.py` | Continuas vs. enteras | `resultados_enteras.csv` |
+| `python analisis.py` | Todos los análisis. Se puede correr uno solo con `capacidad`, `barrido`, `factorial`, `etiquetas`, `benchmarks`, `whatif` o `computo` | `out_1` a `out_6` |
+| `python escalamiento.py` | Escalamiento con 6, 30 y 150 etiquetas. Puede tardar horas (límite de 2000 s por instancia) | `out_7_escalamiento_realista.xlsx` |
+| `python graficos/graficos_informe.py` | Figuras D.1 y D.2 | `graficos/informe/` |
+| `python graficos/graficos.py` | Figuras de la presentación y Figura D.5 | `graficos/presentacion/` |
 
-```bash
-python main.py
-```
+---
 
-Resuelve las tres políticas e imprime sus KPIs, corre el análisis de las 32 combinaciones y la re-planificación período a período. Genera:
+## Qué archivo respalda cada resultado del informe
 
-*   `resultados_comparativos.csv`: costo y KPIs esperados de cada política.
-*   `resultados_combinaciones.csv`: costo esperado de cada una de las 32 combinaciones de productos postergables.
+| Resultado | Archivo |
+|---|---|
+| Tabla 5.1 | `resultados_comparativos.csv` (costos, inventarios, atrasos, set-ups) y `out_4` y `out_1` con 84 h (servicio, atraso terminal, utilización) |
+| Tabla 5.2 y §4.5.1 (no anticipatividad) | Salida en consola de `main.py` |
+| Tabla 5.3 | `out_4_benchmarks_hibrido_vms.xlsx` |
+| Tabla 5.4 y Figura D.2 | `out_1b_barrido_capacidad.xlsx` (hoja `Barrido_3h`) |
+| §5.2.2 | `out_1_capacidad_y_saturacion.xlsx` (hoja `Niveles_Anexo_A`) |
+| Figura D.1 y §5.2.1 | `out_2_factorial_K_CV_Corr.xlsx` |
+| Tablas 5.5, 5.6 y D.1 | `out_3_etiquetas_y_tasa_sku.xlsx` (hoja `Todas_Combinaciones`) |
+| Figura D.3 | `out_3_etiquetas_y_tasa_sku.xlsx` (hoja `Mejores_por_K_y_PL`) |
+| Tabla 5.7 y Figura D.4 | `out_5_whatif_costos_y_borde.xlsx` |
+| Tabla 5.8 y Figura D.5 | `out_7_escalamiento_realista.xlsx` |
+| Tiempos de §6.1 | `out_6_escalamiento_computacional.xlsx` |
 
-Al final se muestra la verificación de **no anticipatividad**: el costo esperado re-planificando en cada período debe coincidir con el del modelo completo para las tres políticas.
+### Notas
 
-Resultados de referencia con los datos del Anexo A:
-
-| Política            | Costo esperado ($) |
-|---------------------|-------------------:|
-| Postergación        |            617.164 |
-| Contra Stock (MTS)  |          1.918.302 |
-| Contra Pedido (MTO) |      1.861.097.600 |
-
-### Scripts complementarios
-
-```bash
-python combinaciones_32.py   # solo el ranking de las 32 combinaciones
-python pruebas_enteras.py    # continuas vs enteras -> resultados_enteras.csv
-```
-
-`pruebas_enteras.py` resuelve cada política con las cantidades (`w`, `s`, `b`) continuas y enteras para justificar el uso de variables continuas. Con los datos actuales ambas versiones dan el mismo costo.
-
-### Análisis de resultados
-
-```bash
-python analisis_resultados.py                       # los dos bloques (unos segundos)
-python analisis_resultados.py --bloques capacidad
-python analisis_resultados.py --salida otra/carpeta --limite-segundos 120
-```
-
-Escribe tablas CSV (separador `;` y coma decimal, para abrir directo en Excel), gráficos PNG y un `ejecucion.json` con la configuración de la corrida en `results/analisis_validado/`. Los bloques disponibles son:
-
-| Bloque      | Qué hace | Archivos |
-|-------------|----------|----------|
-| `base`      | Compara políticas, costo por camino, estadísticas de demanda (CV y correlaciones), postergación por producto y detalle por nodo y período | `01_*` a `04_*` |
-| `capacidad` | Políticas con 21, 42, 63 y 84 horas por período | `06_*` |
-
-### De dónde sale cada resultado de la presentación (entrega 2)
-
-| Lámina | Contenido | Se obtiene de |
-|--------|-----------|---------------|
-| 16 | Correlación entre etiquetas | `03_correlaciones.csv`, filas del período 3 (nodos finales, ponderados por probabilidad) |
-| 35–36 | Costo, ahorro, set-ups e inventarios de cada política | `main.py` → `resultados_comparativos.csv` (también en `01_politicas.csv`) |
-| 35 | Nivel de servicio (100 % / 69 % / 100 %) | `01_politicas.csv`, columna `servicio_fifo_pct` (coincide con la fórmula de la lámina 46) |
-| 37 | Costo de los caminos 1–2–6 y 1–4–11 | Re-planificación de `main.py` (`src/replanificacion.py`), también en `02_caminos.csv` |
-| 38 | 32 combinaciones de postergación | `main.py` / `combinaciones_32.py` → `resultados_combinaciones.csv` |
-| 39 | CV de la demanda del período 2 por etiqueta y por vino | `03_demanda_por_periodo.csv` |
-| 40 | Tiempo de resolución y no anticipatividad | `main.py` (verificación al final de la re-planificación) |
-| 49 | Ahorro y atraso según la capacidad de la línea | `06_capacidad.csv` |
+- **Tabla 5.5:** elige la combinación más barata con *hasta* k etiquetas. Se obtiene de la hoja `Todas_Combinaciones`. La hoja `Mejores_por_K_y_PL` elige con *exactamente* k etiquetas (Figura D.3).
+- **Tasa de postergación:** botellas etiquetadas desde el inventario sin etiqueta en los períodos 2 y 3, divididas por la demanda de esos períodos. Mide volumen, no entregas, así que puede superar 100%.
+- **Escalamiento:** las instancias son sintéticas (unas 100.000 botellas por semana repartidas entre las etiquetas). Con 30 y 150 etiquetas, los tiempos de set-up se reducen a 1/3 y 1/15 para que la línea siga siendo factible. Gurobi se detiene con un gap de 0,5%.
+- **Resultados sin código en el repositorio:** no se guardan las horas esperadas, la holgura mínima ni los inventarios máximos de la Tabla 5.1, ni los datos por nodo de la Figura C.1. Las Figuras C.1, D.3 y D.4 no tienen script para generarlas.
+- La hoja `Barrido_Fino_4h` de `out_1` es de una versión anterior y no se usa.
